@@ -44,6 +44,24 @@ Justificativa:
 - Esta decisão pode ser revisitada, mas qualquer troca de stack precisa
   registrar justificativa aqui antes de ser aplicada (regra da issue #27).
 
+**Adendo (issue #29): validação de configuração com `zod`, persistência com
+SQLite via `better-sqlite3`, autenticação com `firebase-admin`.**
+
+- `zod`: schema de ambiente único, mensagens de erro claras por campo —
+  exatamente o que a issue #29 pede ("inicialização falha com mensagem
+  clara"), sem escrever um validador manual.
+- SQLite (`better-sqlite3`): a escala do produto (grupos privados de amigos,
+  não um serviço multi-tenant de grande porte) não justifica operar um
+  Postgres/MySQL separado. SQLite é um arquivo, API síncrona (sem
+  callback/pool para gerenciar), migrações reversíveis simples de escrever à
+  mão (issue #31), e zero custo/infra adicional para os dois mantenedores.
+  Reavaliar se o produto crescer para múltiplos processos/instâncias
+  concorrentes gravando no mesmo banco.
+- `firebase-admin`: o cliente já autentica via Firebase Auth
+  (`src/services/firebase.ts`); verificar o mesmo ID token no backend com o
+  SDK oficial evita reimplementar verificação de JWT/JWK manualmente
+  (issue #30).
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |

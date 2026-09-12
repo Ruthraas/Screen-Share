@@ -1,9 +1,20 @@
 import { buildServer } from "./server.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, toPublicSummary, ConfigError } from "./config.js";
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  let config;
+  try {
+    config = loadConfig();
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   const app = buildServer();
+  app.log.info({ config: toPublicSummary(config) }, "configuração carregada");
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {

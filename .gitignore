@@ -6,4 +6,6 @@ src-tauri/target/
 .env
 .env.local
 artifacts/
+backend/data/
+backend/secrets/
 src-tauri/icons/SpotifySetup.exe
