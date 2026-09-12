@@ -112,14 +112,62 @@ try {
   }
   await page.mouse.move(0, 0); await page.keyboard.press("Control+k");
   await page.getByRole("dialog", { name: "comandos" }).waitFor();
-  await wave(); await snapshot("palette"); await page.keyboard.press("Escape");
+  await wave(); await snapshot("palette");
+  // issue #26/#17: a busca de verdade filtra a lista, e o item selecionado
+  // acompanha o filtro — Enter no resultado filtrado navega certo.
+  await page.keyboard.type("config");
+  assert.deepEqual(await page.locator(".command-row span").allTextContents(), ["configuracoes"]);
+  await page.keyboard.press("Enter");
+  await page.getByRole("heading", { name: "configuracoes" }).waitFor();
   // issue #21: as 3 resolucoes desktop suportadas, mais o tamanho minimo da janela (tauri.conf.json).
   for (const viewport of [{ width: 800, height: 460 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) { await page.setViewportSize(viewport); await wave(); }
-  await page.getByTitle("configuracoes", { exact: true }).click();
   await page.getByRole("button", { name: "sair da conta", exact: true }).click();
   await page.getByRole("button", { name: "entrar", exact: true }).waitFor();
   await page.goto(`${BASE_URL}/#/profile`);
   await page.getByRole("button", { name: "entrar", exact: true }).waitFor();
+
+  // issue #26/#19: ScreenViewer com MediaStream real, num harness isolado
+  // (test-harness/, nunca faz parte do bundle de produção — não está em
+  // vite.config.ts) servido pelo mesmo dev server.
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await page.goto(`${BASE_URL}/test-harness/screen-viewer.html`);
+  await page.waitForFunction(() => !!window.__harness);
+  assert.ok(await page.locator(".stream-placeholder").isVisible(), "sem stream, mostra placeholder");
+  assert.equal(await page.locator(".stream-stage video").count(), 0, "sem stream, nao monta <video>");
+
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 10; canvas.height = 10;
+    window.__streamA = canvas.captureStream(0);
+    window.__harness.setStream(window.__streamA);
+  });
+  await page.waitForSelector(".stream-stage video");
+  assert.ok(await page.evaluate(() => document.querySelector(".stream-stage video").srcObject === window.__streamA), "video.srcObject === streamA");
+
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 10; canvas.height = 10;
+    window.__streamB = canvas.captureStream(0);
+    window.__harness.setStream(window.__streamB);
+  });
+  await page.waitForTimeout(150);
+  assert.ok(await page.evaluate(() => {
+    const video = document.querySelector(".stream-stage video");
+    return video.srcObject === window.__streamB && video.srcObject !== window.__streamA;
+  }), "trocar de stream atualiza srcObject e larga o anterior");
+
+  await page.evaluate(() => window.__harness.setStream(undefined));
+  await page.waitForSelector(".stream-placeholder");
+  assert.equal(await page.locator(".stream-stage video").count(), 0, "remover o stream volta ao placeholder e desmonta o <video>");
+
+  await page.evaluate(() => window.__harness.setStream(window.__streamB));
+  await page.waitForSelector(".stream-stage video");
+  const endedBefore = await page.evaluate(() => window.__harness.endedCount());
+  await page.evaluate(() => window.__streamB.dispatchEvent(new Event("inactive")));
+  await page.waitForTimeout(150);
+  const endedAfter = await page.evaluate(() => window.__harness.endedCount());
+  assert.equal(endedAfter, endedBefore + 1, "onStreamEnded dispara quando o stream termina sozinho");
+
   assert.deepEqual(errors, []);
-  console.log("PASS: identity fixture, local groups/profile/preferences, logout, route gate, wave geometry and hover opacity.");
+  console.log("PASS: identity fixture, local groups/profile/preferences, logout, route gate, command palette filter, ScreenViewer lifecycle, wave geometry and hover opacity.");
 } catch (error) { await snapshot("failure"); console.log("page", await page.locator("body").innerText()); console.log("errors", errors); throw error; } finally { await browser.close(); killDevServerTree(devServer); }
