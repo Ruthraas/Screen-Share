@@ -13,7 +13,6 @@ interface Sparkle {
 export function PixelWave() {
   const id = useId().replace(/:/g, "");
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
-  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     const generateSparkles = () => {
@@ -41,8 +40,6 @@ export function PixelWave() {
       viewBox="0 0 100 60"
       preserveAspectRatio="none"
       aria-hidden="true"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{ overflow: "visible", display: "block" }}
     >
       <defs>
@@ -60,11 +57,10 @@ export function PixelWave() {
           cy={`${s.y}%`}
           r={s.size}
           fill={`url(#${id}-sparkle-glow)`}
-          opacity={hovered ? Math.min(s.opacity * 2, 1) : s.opacity}
+          opacity={s.opacity}
           style={{
             animation: `sparkle-${i} ${s.duration}s ease-in-out ${s.delay}s infinite`,
             transformOrigin: `${s.x}% ${s.y}%`,
-            filter: hovered ? "drop-shadow(0 0 6px var(--accent))" : "none",
           } as any}
         />
       ))}
@@ -76,15 +72,15 @@ export function PixelWave() {
               transform: translate(0, 0) scale(0.2);
             }
             10% {
-              opacity: ${hovered ? Math.min(s.opacity * 2, 1) : s.opacity};
+              opacity: ${s.opacity};
               transform: translate(${s.drift * 20}px, -8px) scale(1);
             }
             35% {
-              opacity: ${hovered ? Math.min(s.opacity * 1.5, 1) : s.opacity * 0.9};
+              opacity: ${s.opacity * 0.9};
               transform: translate(${s.drift * 40}px, -22px) scale(1.5);
             }
             65% {
-              opacity: ${hovered ? s.opacity * 0.7 : s.opacity * 0.4};
+              opacity: ${s.opacity * 0.4};
               transform: translate(${s.drift * 25}px, -10px) scale(0.8);
             }
           }
