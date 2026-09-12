@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCurrentSession, getSessionError, logout as logoutSession, restoreSession, subscribeSession, type SessionUser } from "../../services/authClient";
-import { emptyAccountData, readAccount, writeAccount, type AccountData, type SavedGroup } from "../../services/localData";
+import { emptyAccountData, persistDeviceTheme, readAccount, writeAccount, type AccountData, type SavedGroup } from "../../services/localData";
 import type { Group, Preferences, User } from "../../data/types";
 import type { SessionState } from "../../services/sessionRouting";
 
@@ -41,7 +41,10 @@ function toGroup(saved: SavedGroup, currentUser: User): Group {
 export function AccountProvider({ account, children }: { account: SessionUser; children: ReactNode }) {
   const [data, setData] = useState(() => readAccount(account.id));
   const commit = (next: AccountData) => { writeAccount(account.id, next); setData(next); };
-  useEffect(() => { document.documentElement.dataset.theme = data.preferences.theme; }, [data.preferences.theme]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = data.preferences.theme;
+    persistDeviceTheme(data.preferences.theme);
+  }, [data.preferences.theme]);
   const displayName = data.profile.name || account.email?.split("@")[0] || "usuario";
   const user: User = { id: account.id, name: displayName, email: account.email, initials: displayName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(), online: true, current: true, photoURL: data.profile.photoURL };
   const groups = data.groups.map(saved => toGroup(saved, user));
