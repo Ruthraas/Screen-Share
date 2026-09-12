@@ -338,6 +338,34 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     um pedido do usuário: **matrix reduzida pra só `windows-latest` por
     agora** — build/CI pra Linux fica pra depois que o fluxo no Windows
     estiver redondo, não considerar Linux ainda.
+  - **GitHub e Discord ganharam credenciais reais (2026-09-12)** — os três
+    provedores (Google, GitHub, Discord) agora redirecionam de verdade pro
+    `authorize` de cada um, com `client_id` correto, validado com o
+    servidor real (não só teste unitário).
+  - **`OAUTH_REDIRECT_BASE_URL` estava faltando no `.env` local** — campo
+    obrigatório, sem default; sem ele `loadConfig()` nem deixa o backend
+    subir. Também descoberto nesta etapa: `better-sqlite3` **não cria** o
+    diretório do `DATABASE_PATH` sozinho (`backend/data/`, já gitignorado)
+    — precisa existir antes do primeiro boot em qualquer ambiente novo.
+  - **Dois destinos de redirect ao mesmo tempo, via `?target=` (2026-09-12,
+    combinado com @Ruthraas — ele já preparou o lado dele em `c94186a`/
+    `016a8d1`)**: `OAUTH_FRONTEND_REDIRECT_URL` (valor único) virou
+    `OAUTH_FRONTEND_REDIRECT_URL_BROWSER` +
+    `OAUTH_FRONTEND_REDIRECT_URL_DESKTOP`. `/start` aceita
+    `?target=browser|desktop` (allowlist; ausente ou inválido cai em
+    "browser", mesmo comportamento de antes) e embute a escolha dentro do
+    `state` assinado — é o único jeito de sobreviver à ida-e-volta pelo
+    provedor, já que ele só ecoa o `state` de volta, não query params
+    arbitrários. `/callback` lê o `target` do `state` (inclusive em
+    caminhos de erro) e redireciona pro par certo. Isso resolve a
+    limitação registrada antes aqui: agora dá pra testar o fluxo do
+    navegador (dev) e do app desktop (deep link) ao mesmo tempo contra o
+    mesmo backend, sem editar `.env` e reiniciar pra trocar de um pro
+    outro. Detalhe técnico completo em `docs/backend/ARQUITETURA.md` §5.
+    Validado com `npm test` (120/120, 4 testes novos) e smoke test real via
+    HTTP (start com `target=desktop` → state decodifica `target` → callback
+    redireciona pro deep link `screenshare://oauth-callback`, inclusive em
+    erro).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -395,9 +423,9 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 
 - **Base URL/versionamento**: todas as rotas HTTP terão prefixo `/v1/...`; mudança incompatível vira `/v2/...`, `/v1` nunca muda de forma retroativa.
 - **Autenticação MUDOU DE VERDADE (2026-09-12, #30)**: não é mais token do Firebase. `Authorization: Bearer <accessToken>` em toda requisição, onde `accessToken` vem de `POST /v1/auth/register`, `/login` ou do callback OAuth — **não mais de `src/services/firebase.ts`**. Token de acesso dura só 15 min; usar `refreshToken` (mesma resposta) em `POST /v1/auth/refresh` antes de expirar pra pegar um par novo (o antigo é invalidado — rotação, não dá pra reusar). `POST /v1/auth/logout` revoga o refresh token.
-  - **`src/oauth.tsx` do frontend precisa ser reescrito** — hoje ele faz `signInWithPopup` do Firebase direto no cliente e chama endpoints próprios (`/complete`, `/cancel`) que não existem no backend novo. O fluxo novo é: o cliente navega (não popup — é um redirect de verdade) pra `GET /v1/auth/oauth/{google|github|discord}/start` no backend; o backend redireciona pro provedor; o provedor volta pro backend (`/callback`); o backend troca o código, cria a sessão e só então redireciona pro frontend em `OAUTH_FRONTEND_REDIRECT_URL` com o resultado num **fragmento** da URL: sucesso = `#access_token=...&refresh_token=...&provider=...`; erro = `#error=<código>` (`invalid_state`, `missing_code`, `provider_error`, `provider_not_configured`, `provider_unknown`). `OAUTH_FRONTEND_REDIRECT_URL` tem default `http://127.0.0.1:5173/oauth.html` (dev) — combinar com o backend qual URL usar em produção (provavelmente o esquema do Tauri).
+  - **`src/oauth.tsx`/`desktop_auth.rs` já reescritos pelo Ruthraas** (commits `7759a63`/`c94186a`/`016a8d1`) pro contrato novo: o cliente navega (não popup — é um redirect de verdade, ou no desktop abre o navegador do sistema) pra `GET /v1/auth/oauth/{google|github|discord}/start?target=browser|desktop` no backend; o backend redireciona pro provedor; o provedor volta pro backend (`/callback`); o backend troca o código, cria a sessão e redireciona pro destino escolhido em `target` (browser = fragmento da URL de `OAUTH_FRONTEND_REDIRECT_URL_BROWSER`; desktop = deep link `screenshare://` via `OAUTH_FRONTEND_REDIRECT_URL_DESKTOP`) com o resultado: sucesso = `#access_token=...&refresh_token=...&provider=...`; erro = `#error=<código>` (`invalid_state`, `missing_code`, `provider_error`, `provider_not_configured`, `provider_unknown`). **Os dois destinos já podem estar configurados ao mesmo tempo** (2026-09-12) — não é mais preciso escolher um só no `.env` do backend.
   - **Cadastro/login por e-mail e senha também são novos**: `POST /v1/auth/register` (e-mail+senha, 201, já loga — devolve a sessão) e `POST /v1/auth/login`. Senha errada e conta inexistente dão a mesma resposta `401` genérica de propósito.
-  - **Só o Google tem credenciais reais configuradas até agora** — GitHub e Discord respondem `404` em `/start` até alguém criar os apps OAuth nas consoles de desenvolvedor deles (não depende do backend, é cadastro externo).
+  - **Google, GitHub e Discord têm credenciais reais configuradas (2026-09-12)** — os três `/start` redirecionam de verdade pro provedor.
 - **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI. Códigos em uso: `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation_error` (422).
 - **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
 - **CORS (#59) já configurado**: o WebView do Tauri empacotado (`https://tauri.localhost`) e o dev server do Vite (`http://127.0.0.1:5173`) já estão na allowlist — chamadas fetch/XHR do cliente devem funcionar sem precisar de proxy nem de desabilitar segurança do WebView. Se o app rodar de outra origem (porta diferente, outro esquema), o backend vai rejeitar silenciosamente (sem `Access-Control-Allow-Origin`) — avisar o lado backend pra adicionar em `CORS_ALLOWED_ORIGINS`.
