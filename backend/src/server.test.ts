@@ -2,9 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildServer } from "./server.js";
 import { FakeTokenVerifier } from "./testing/fakeTokenVerifier.js";
+import { createTestDb } from "./testing/testDb.js";
 
 function build() {
-  return buildServer({ verifier: new FakeTokenVerifier() });
+  return buildServer({ verifier: new FakeTokenVerifier(), db: createTestDb() });
 }
 
 test("GET /health responde 200 com status ok (sem token)", async () => {

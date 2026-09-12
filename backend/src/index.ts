@@ -1,6 +1,8 @@
 import { buildServer } from "./server.js";
 import { loadConfig, toPublicSummary, ConfigError } from "./config.js";
 import { FirebaseTokenVerifier } from "./auth/firebaseTokenVerifier.js";
+import { openDatabase } from "./db/connection.js";
+import { migrateUp } from "./db/migrate.js";
 
 async function main(): Promise<void> {
   let config;
@@ -14,9 +16,12 @@ async function main(): Promise<void> {
     throw err;
   }
 
+  const db = openDatabase(config.database.path);
+  const applied = migrateUp(db);
+
   const verifier = new FirebaseTokenVerifier(config.auth);
-  const app = buildServer({ verifier });
-  app.log.info({ config: toPublicSummary(config) }, "configuração carregada");
+  const app = buildServer({ verifier, db });
+  app.log.info({ config: toPublicSummary(config), migrationsApplied: applied }, "configuração carregada");
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
@@ -25,6 +30,7 @@ async function main(): Promise<void> {
     app.log.info({ signal }, "encerrando servidor");
     try {
       await app.close();
+      db.close();
       process.exit(0);
     } catch (err) {
       app.log.error({ err }, "erro ao encerrar servidor");
