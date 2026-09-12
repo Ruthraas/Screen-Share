@@ -216,7 +216,7 @@ textarea {
   color: var(--text-secondary);
   display: grid;
   place-items: center;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 100ms ease-out;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
   position: relative;
   overflow: hidden;
 }
@@ -226,7 +226,6 @@ textarea {
 .avatar-button .avatar {
   width: 17px;
   height: 17px;
-  transition: transform 120ms ease-out;
 }
 
 .nav-button:hover,
@@ -240,16 +239,7 @@ textarea {
 .nav-button:not(.is-active):active,
 .avatar-button:active,
 .dot-menu:active {
-  transform: scale(0.92);
-}
-
-.nav-button:hover svg,
-.avatar-button:hover svg,
-.dot-menu:hover svg,
-.nav-button:hover .avatar,
-.avatar-button:hover .avatar,
-.dot-menu:hover .avatar {
-  transform: scale(1.15);
+  background: var(--surface-alt);
 }
 
 .nav-button.is-active {
@@ -264,7 +254,7 @@ textarea {
 
 .nav-button.is-active svg,
 .nav-button.is-active .avatar {
-  transform: scale(1.05);
+  color: var(--accent);
 }
 
 .profile-menu {
@@ -275,7 +265,6 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
   overflow: hidden;
   z-index: 100;
   animation: profile-menu-in 150ms ease-out;
@@ -535,8 +524,6 @@ textarea {
 .button--danger:not(:disabled):active {
   transform: scale(0.98);
 }
-  transform: scale(0.98);
-}
 
 .button--wide {
   width: 100%;
@@ -563,7 +550,7 @@ textarea {
   min-height: 34px;
   padding: 0 12px;
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
 .field textarea {
@@ -576,7 +563,6 @@ textarea {
 .field textarea:focus {
   border-color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .field:focus-within label span {
@@ -625,7 +611,6 @@ textarea {
   position: absolute;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 4px var(--accent), 0 0 8px var(--accent);
   animation:
     star-drift var(--speed, 30s) linear infinite,
     star-twinkle var(--twinkle-speed, 2s) ease-in-out var(--twinkle-delay, 0s) infinite;
@@ -791,19 +776,19 @@ textarea {
   color: var(--accent);
   background: transparent;
   padding: 0;
-  transition: opacity 120ms ease, transform 100ms ease-out;
+  transition: color 120ms ease;
 }
 
 .oauth-line button:hover,
 .link-button:hover,
 .setting-row button:hover {
-  opacity: 0.7;
+  color: var(--accent);
 }
 
 .oauth-line button:active,
 .link-button:active,
 .setting-row button:active {
-  transform: scale(0.95);
+  color: var(--accent);
 }
 
 .oauth-button {
@@ -811,7 +796,7 @@ textarea {
   align-items: center;
   gap: 4px;
   font-weight: 500;
-  transition: opacity 120ms ease, transform 100ms ease-out;
+  transition: opacity 120ms ease;
 }
 
 .oauth-button:hover:not(:disabled) {
@@ -819,21 +804,16 @@ textarea {
 }
 
 .oauth-button:not(:disabled):active {
-  transform: scale(0.96);
+  opacity: 0.8;
 }
 
 .oauth-button svg {
   width: 13px;
   height: 13px;
-  transition: transform 100ms ease-out;
-}
-
-.oauth-button:hover svg {
-  transform: scale(1.15);
 }
 
 .auth-switch {
-  transition: opacity 120ms ease, transform 100ms ease-out;
+  transition: opacity 120ms ease, color 120ms ease;
 }
 
 .auth-switch:hover {
@@ -842,7 +822,7 @@ textarea {
 }
 
 .auth-switch:active {
-  transform: scale(0.96);
+  opacity: 0.8;
 }
 
 @keyframes auth-form-in {
@@ -950,13 +930,12 @@ textarea {
   min-height: 38px;
   font: inherit;
   outline: none;
-  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
 .input-with-icon input:focus {
   border-color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .input-with-icon input:focus + svg:first-child,
@@ -1418,7 +1397,7 @@ textarea {
 
 .member-tile:hover .member-tile__center svg,
 .member-tile.is-sharing .member-tile__center svg {
-  transform: scale(1.15);
+  color: var(--accent);
 }
 
 .member-tile.is-sharing::after {
@@ -1426,13 +1405,10 @@ textarea {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   background: var(--accent);
-  border-radius: 50%;
-  animation: pulse-ring 1.5s ease-out infinite;
-}
-  border-radius: 50%;
+  border-radius: 2px;
   animation: pulse-ring 1.5s ease-out infinite;
 }
 
@@ -1561,7 +1537,6 @@ button:focus-visible {
 
 .theme-option:hover .theme-swatch {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .theme-option:active {
@@ -1757,12 +1732,7 @@ button:focus-visible {
   height: 60px;
   z-index: 20;
   pointer-events: none;
-  transition: opacity 200ms ease;
   opacity: 0.8;
-}
-
-.pixel-wave:hover {
-  opacity: 1;
 }
 .sidebar .avatar-button { margin-top: auto; margin-bottom: 14px; }
 
@@ -2080,7 +2050,7 @@ button:disabled,
   font: inherit;
   font-size: 13px;
   outline: none;
-  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, padding-left 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, padding-left 150ms ease;
 }
 
 .terminal-field .input-group input::placeholder {
@@ -2091,7 +2061,6 @@ button:disabled,
 .terminal-field .input-group input:focus {
   border-color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 0 0 3px var(--accent-soft);
   padding-left: 52px;
 }
 
@@ -2178,18 +2147,17 @@ button:disabled,
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 100ms ease-out, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
 
 .oauth-buttons .oauth-button:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: 0 4px 16px rgba(95, 191, 119, 0.15);
 }
 
 .oauth-buttons .oauth-button:not(:disabled):active {
-  transform: scale(0.98);
+  background: var(--surface-alt);
 }
 
 .oauth-buttons .oauth-button svg {
@@ -2206,7 +2174,7 @@ button:disabled,
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 60%);
+  background: var(--accent);
   opacity: 0;
   transition: opacity 200ms ease;
   pointer-events: none;
@@ -2217,7 +2185,7 @@ button:disabled,
 }
 
 .submit-btn:not(:disabled):active {
-  transform: scale(0.98);
+  opacity: 0.9;
 }
 .theme-swatch--dark {
   background: #0A0C0B;
@@ -2234,10 +2202,10 @@ button:disabled,
   background: var(--gray-block);
   padding: 2px;
   position: relative;
-  transition: background 200ms ease, box-shadow 200ms ease;
+  transition: background 200ms ease, border-color 200ms ease;
 }
 .toggle:hover {
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  border-color: var(--accent);
 }
 .toggle::before {
   content: "";
@@ -2259,11 +2227,10 @@ button:disabled,
   height: 16px;
   border-radius: 4px;
   background: var(--bg);
-  transition: translate 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: translate 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .toggle:hover span:last-child {
-  transform: scale(1.1);
+  background: var(--bg);
 }
 .toggle.is-on span:last-child {
   translate: 16px 0;
