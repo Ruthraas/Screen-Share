@@ -42,8 +42,8 @@ export function AccountProvider({ account, children }: { account: SessionUser; c
   const [data, setData] = useState(() => readAccount(account.id));
   const commit = (next: AccountData) => { writeAccount(account.id, next); setData(next); };
   useEffect(() => { document.documentElement.dataset.theme = data.preferences.theme; }, [data.preferences.theme]);
-  const displayName = data.profile.name || account.name || account.email?.split("@")[0] || "usuario";
-  const user: User = { id: account.id, name: displayName, email: account.email, initials: displayName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(), online: true, current: true, photoURL: data.profile.photoURL || account.photoURL };
+  const displayName = data.profile.name || account.email?.split("@")[0] || "usuario";
+  const user: User = { id: account.id, name: displayName, email: account.email, initials: displayName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(), online: true, current: true, photoURL: data.profile.photoURL };
   const groups = data.groups.map(saved => toGroup(saved, user));
   const value: Account = {
     user, groups, selected: groups.find(group => group.id === data.selectedId), bio: data.profile.bio, preferences: data.preferences,

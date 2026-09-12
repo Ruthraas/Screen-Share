@@ -1,11 +1,13 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type SessionUser = {
-  id: string;
-  name: string;
-  email: string;
-  photoURL?: string;
-};
+/**
+ * O backend (issue #30) nunca devolve um objeto de usuário — só o par de
+ * tokens. `id`/`email` vêm de decodificar o próprio access token (payload
+ * assinado, formato `base64url(json).base64url(hmac)`, ver
+ * `backend/src/auth/signedPayload.ts`); não existe nome nem foto no
+ * contrato, então o perfil exibido é sempre local (`localData.ts`).
+ */
+export type SessionUser = { id: string; email?: string };
 
 export type AuthTokens = {
   accessToken: string;
@@ -31,6 +33,7 @@ export class AuthError extends Error {
 }
 
 const REFRESH_TOKEN_KEY = "screenshare.refresh_token";
+const OAUTH_ERROR_KEY = "screenshare.oauth_error";
 
 type SessionListener = (user: SessionUser | null) => void;
 let currentSession: AuthSession | null = null;
@@ -38,12 +41,18 @@ let currentError: string | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<SessionListener>();
 
-function decodeJwtExpiryMs(token: string): number | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
+/** Decodifica o payload do access token (sem verificar assinatura — só
+ * pra ler `uid`/`email`/`exp` pro lado do cliente; a verificação de
+ * verdade é sempre do backend). Formato: `base64url(json).base64url(hmac)`,
+ * não é JWT (não tem header, e o `exp` já vem em milissegundos, não em
+ * segundos). */
+function decodeAccessTokenPayload(token: string): { uid: string; email?: string; exp: number } | null {
+  const [body] = token.split(".");
+  if (!body) return null;
   try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+    const normalized = body.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return JSON.parse(atob(padded));
   } catch {
     return null;
   }
@@ -51,7 +60,7 @@ function decodeJwtExpiryMs(token: string): number | null {
 
 function scheduleSilentRefresh(session: AuthSession) {
   if (refreshTimer) clearTimeout(refreshTimer);
-  const expiryMs = decodeJwtExpiryMs(session.tokens.accessToken);
+  const expiryMs = decodeAccessTokenPayload(session.tokens.accessToken)?.exp ?? null;
   const delay = expiryMs ? Math.max(expiryMs - Date.now() - 60_000, 30_000) : 10 * 60_000;
   refreshTimer = setTimeout(() => {
     refreshSession(session.tokens.refreshToken).catch(async () => {
@@ -105,14 +114,13 @@ function apiUrl(path: string): string {
   return `${baseUrl()}${path}`;
 }
 
-/** Monta a URL de início do fluxo OAuth (issue #30/#1): o backend recebe
- * `redirect_uri` e `state` via query params e devolve, ao final, o mesmo
- * `state` e um `handoff_code` de uso único — nunca o token em si — para o
- * `redirect_uri` informado. Função pura (recebe a base em vez de ler
- * `import.meta.env`) para poder ser testada sem ambiente Vite. */
-export function buildOAuthStartUrl(apiBaseUrl: string, provider: OAuthProvider, redirectUri: string, state: string): string {
-  const params = new URLSearchParams({ redirect_uri: redirectUri, state });
-  return `${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/oauth/${provider}/start?${params.toString()}`;
+/** URL de início do fluxo OAuth (issue #30/#1): sem query params — o
+ * backend não aceita `redirect_uri`/`state` do cliente, ele é quem decide
+ * pra onde volta no final (`OAUTH_FRONTEND_REDIRECT_URL`, configurado no
+ * backend). Função pura (recebe a base em vez de ler `import.meta.env`)
+ * pra poder ser testada sem ambiente Vite. */
+export function buildOAuthStartUrl(apiBaseUrl: string, provider: OAuthProvider): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/oauth/${provider}/start`;
 }
 
 async function parseJsonSafe(response: Response): Promise<any> {
@@ -144,30 +152,34 @@ async function postJson(path: string, body: unknown): Promise<any> {
   return data;
 }
 
-function toSession(data: any): AuthSession {
-  if (!data?.user?.id || !data?.accessToken || !data?.refreshToken) {
+function toSession(accessToken: string | undefined, refreshToken: string | undefined): AuthSession {
+  const payload = accessToken ? decodeAccessTokenPayload(accessToken) : null;
+  if (!accessToken || !refreshToken || !payload?.uid) {
     throw new AuthError("malformed-response");
   }
   return {
-    user: { id: data.user.id, name: data.user.name, email: data.user.email, photoURL: data.user.photoURL ?? undefined },
-    tokens: { accessToken: data.accessToken, refreshToken: data.refreshToken },
+    user: { id: payload.uid, email: payload.email },
+    tokens: { accessToken, refreshToken },
   };
 }
 
-export async function registerWithEmail(name: string, email: string, password: string): Promise<AuthSession> {
-  const session = toSession(await postJson("/v1/auth/register", { name, email, password }));
+export async function registerWithEmail(email: string, password: string): Promise<AuthSession> {
+  const data = await postJson("/v1/auth/register", { email, password });
+  const session = toSession(data.accessToken, data.refreshToken);
   await persistSession(session);
   return session;
 }
 
 export async function loginWithEmail(email: string, password: string): Promise<AuthSession> {
-  const session = toSession(await postJson("/v1/auth/login", { email, password }));
+  const data = await postJson("/v1/auth/login", { email, password });
+  const session = toSession(data.accessToken, data.refreshToken);
   await persistSession(session);
   return session;
 }
 
 export async function refreshSession(refreshToken: string): Promise<AuthSession> {
-  const session = toSession(await postJson("/v1/auth/refresh", { refreshToken }));
+  const data = await postJson("/v1/auth/refresh", { refreshToken });
+  const session = toSession(data.accessToken, data.refreshToken);
   await persistSession(session);
   return session;
 }
@@ -188,14 +200,20 @@ export async function logout(): Promise<void> {
   }
 }
 
-async function exchangeHandoffCode(handoffCode: string): Promise<AuthSession> {
-  const session = toSession(await postJson("/v1/auth/oauth/exchange", { handoffCode }));
-  await persistSession(session);
-  return session;
-}
+type DesktopOAuthResult = { accessToken?: string; refreshToken?: string; error?: string };
 
-type DesktopOAuthResult = { handoffCode?: string; error?: string };
-
+/**
+ * No Tauri, abre o navegador padrão do sistema pro fluxo OAuth (nunca um
+ * WebView embutido — Google bloqueia login OAuth em WebView por política) e
+ * espera o resultado voltar via deep link `screenshare://` (RFC 8252,
+ * `src-tauri/src/desktop_auth.rs`).
+ *
+ * Fora do Tauri (dev em navegador), é uma navegação de verdade — não um
+ * popup: o backend também navega de verdade, então esta função nunca
+ * resolve nesse caminho, a página é descarregada. Quem completa o login é
+ * `src/oauth.tsx`, que lê o fragmento da URL de retorno e persiste a sessão
+ * antes de voltar pro app.
+ */
 export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSession> {
   if (isTauri()) {
     let result: DesktopOAuthResult;
@@ -205,62 +223,55 @@ export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSessi
       throw new AuthError(typeof error === "string" ? error : "desktop-auth-failed");
     }
     if (result.error) throw new AuthError(result.error);
-    if (!result.handoffCode) throw new AuthError("desktop-auth-failed");
-    return exchangeHandoffCode(result.handoffCode);
+    const session = toSession(result.accessToken, result.refreshToken);
+    await persistSession(session);
+    return session;
   }
-  return loginWithOAuthInBrowser(provider);
+
+  location.href = buildOAuthStartUrl(baseUrl(), provider);
+  return new Promise<AuthSession>(() => {});
 }
 
-/** Fallback para desenvolvimento em navegador (`npm run dev` fora do Tauri):
- * abre um popup para o backend e recebe o `handoff_code` via postMessage de
- * `oauth.html`, servido pelo próprio Vite/estático. */
-function loginWithOAuthInBrowser(provider: OAuthProvider): Promise<AuthSession> {
-  return new Promise((resolve, reject) => {
-    const state = crypto.randomUUID();
-    const redirectUri = `${location.origin}/oauth.html`;
-    let popup: Window | null;
-    try {
-      popup = window.open(buildOAuthStartUrl(baseUrl(), provider, redirectUri, state), "screenshare-oauth", "width=480,height=640");
-    } catch (error) {
-      reject(error instanceof AuthError ? error : new AuthError("api-not-configured"));
-      return;
-    }
-    if (!popup) {
-      reject(new AuthError("popup-blocked"));
-      return;
-    }
+/** Chamado por `src/oauth.tsx` ao carregar, com `location.hash` cru. Nunca
+ * lança: em caso de erro/fragmento inválido, guarda o código em
+ * `sessionStorage` pra `useSession` mostrar depois que o app recarregar. */
+export async function completeOAuthFromFragment(hash: string): Promise<void> {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const error = params.get("error");
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
 
-    let settled = false;
-    const poll = window.setInterval(() => {
-      if (popup!.closed) finish(() => reject(new AuthError("popup-closed-by-user")));
-    }, 500);
+  if (error) {
+    setPendingOAuthError(error);
+    return;
+  }
 
-    function finish(handler: () => void) {
-      if (settled) return;
-      settled = true;
-      window.removeEventListener("message", onMessage);
-      window.clearInterval(poll);
-      handler();
-    }
+  try {
+    const session = toSession(accessToken ?? undefined, refreshToken ?? undefined);
+    await persistSession(session);
+  } catch {
+    setPendingOAuthError("malformed-response");
+  }
+}
 
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== location.origin || !event.data || event.data.type !== "screenshare-oauth") return;
-      const { state: returnedState, handoffCode, error } = event.data as { state?: string; handoffCode?: string; error?: string };
-      if (returnedState !== state) return;
-      finish(() => {
-        popup?.close();
-        if (error) {
-          reject(new AuthError(error));
-        } else if (!handoffCode) {
-          reject(new AuthError("popup-missing-code"));
-        } else {
-          exchangeHandoffCode(handoffCode).then(resolve, reject);
-        }
-      });
-    }
+function setPendingOAuthError(code: string) {
+  try {
+    sessionStorage.setItem(OAUTH_ERROR_KEY, code);
+  } catch {
+    // sessionStorage indisponível — o erro simplesmente não aparece depois.
+  }
+}
 
-    window.addEventListener("message", onMessage);
-  });
+/** Lido uma única vez por `useSession` na abertura do app (issue #1/#2:
+ * mostrar o erro do OAuth depois que `oauth.tsx` já navegou de volta). */
+export function consumePendingOAuthError(): string | null {
+  try {
+    const value = sessionStorage.getItem(OAUTH_ERROR_KEY);
+    if (value) sessionStorage.removeItem(OAUTH_ERROR_KEY);
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 async function persistSession(session: AuthSession): Promise<void> {
@@ -307,18 +318,20 @@ async function getStoredRefreshToken(): Promise<string | null> {
 }
 
 /** Restaura a sessão na abertura do app trocando o refresh token guardado
- * por um novo par de tokens (issue #2: "abertura restaura sessão válida"). */
+ * por um novo par de tokens (issue #2: "abertura restaura sessão válida").
+ * Também recolhe um eventual erro de OAuth pendente de `oauth.tsx`. */
 export async function restoreSession(): Promise<AuthSession | null> {
+  const pendingOAuthError = consumePendingOAuthError();
   const refreshToken = await getStoredRefreshToken();
   if (!refreshToken) {
-    setSession(null, null);
+    setSession(null, pendingOAuthError);
     return null;
   }
   try {
     return await refreshSession(refreshToken);
   } catch {
     await clearPersistedSession();
-    setSession(null, "session-expired");
+    setSession(null, pendingOAuthError ?? "session-expired");
     return null;
   }
 }
@@ -327,24 +340,29 @@ const CLIENT_ONLY_MESSAGES: Record<string, string> = {
   network: "falha de rede. confira sua conexao e tente novamente",
   "api-not-configured": "configure o backend (VITE_API_URL) primeiro",
   "malformed-response": "resposta inesperada do servidor. tente novamente",
-  "popup-blocked": "o navegador bloqueou a janela de login. permita popups e tente novamente",
-  "popup-closed-by-user": "login cancelado",
-  "popup-missing-code": "nao foi possivel concluir o login. tente novamente",
+  "session-expired": "sua sessao expirou. entre novamente",
+  // Códigos do backend (docs/BACKEND.md §4), compartilhados pelos dois
+  // transportes (desktop via deep link, web via fragmento da URL).
+  invalid_state: "a tentativa de login expirou ou e invalida. tente novamente",
+  missing_code: "o provedor nao retornou os dados esperados. tente novamente",
+  provider_error: "nao foi possivel completar o login com o provedor. tente novamente",
+  provider_not_configured: "esse provedor ainda nao foi configurado no backend",
+  provider_unknown: "provedor de login invalido",
+  // Só do transporte desktop (loop local em src-tauri/src/desktop_auth.rs).
   "desktop-auth-cancelled": "login cancelado",
   "desktop-auth-timeout": "o login expirou. tente novamente",
   "desktop-auth-busy": "conclua a tentativa de login aberta no navegador",
-  "desktop-auth-network": "falha de rede. confira sua conexao e tente novamente",
-  "desktop-auth-provider-failed": "o provedor recusou o login. tente novamente",
   "desktop-auth-failed": "nao foi possivel abrir o login no navegador. tente novamente",
   "desktop-invalid-provider": "provedor de login invalido",
-  "desktop-server-failed": "nao foi possivel iniciar o login local. tente novamente",
+  "desktop-server-failed": "nao foi possivel iniciar o login. tente novamente",
   "desktop-browser-failed": "nao foi possivel abrir o navegador. tente novamente",
-  "session-expired": "sua sessao expirou. entre novamente",
 };
 
 /** Mensagens de erro do backend (envelope `{ error: { code, message } }`) já
  * chegam em pt-BR seguras para exibir; só os códigos gerados no cliente
- * (rede, popup, fluxo desktop) precisam de tradução aqui. */
+ * (rede, sessão, fluxo desktop) e os 5 códigos de erro do OAuth (que
+ * chegam como string crua, sem envelope, no fragmento/deep link) precisam
+ * de tradução aqui. */
 export function authErrorMessage(error: unknown): string {
   if (error instanceof AuthError) {
     if (error.message && error.message !== error.code) return error.message;

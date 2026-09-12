@@ -9,6 +9,7 @@ import {
   registerWithEmail,
   type OAuthProvider,
 } from "../services/authClient";
+import { emptyAccountData, writeAccount } from "../services/localData";
 
 export function Login({ sessionError }: { sessionError?: string }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -45,7 +46,10 @@ export function Login({ sessionError }: { sessionError?: string }) {
 
     try {
       if (isSignup) {
-        await registerWithEmail(name, email, password);
+        const session = await registerWithEmail(email, password);
+        // O backend (issue #30) não guarda nome de usuário, só e-mail/senha;
+        // o nome digitado no cadastro vira perfil local (Profile/Settings).
+        if (name.trim()) writeAccount(session.user.id, { ...emptyAccountData(), profile: { bio: "", name: name.trim() } });
       } else {
         await loginWithEmail(email, password);
       }
@@ -127,7 +131,7 @@ export function Login({ sessionError }: { sessionError?: string }) {
                     type={showPassword ? "text" : "password"}
                     autoComplete={isSignup ? "new-password" : "current-password"}
                     required
-                    minLength={6}
+                    minLength={isSignup ? 8 : undefined}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="********"
