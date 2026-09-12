@@ -1,31 +1,35 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrandMark } from "./components/ui/Icons";
+import { completeOAuthFromFragment } from "./services/authClient";
 import "./styles.css";
 
-const params = new URLSearchParams(location.search);
-const state = params.get("state");
-const handoffCode = params.get("handoff_code");
-const error = params.get("error");
+const hash = location.hash;
 history.replaceState(null, "", location.pathname);
 
 /**
- * Página de retorno do fluxo OAuth no navegador (fallback de desenvolvimento
- * fora do Tauri — issue #1/#30). O backend já concluiu a troca com o
- * provedor e redirecionou para cá só com `state`, `handoff_code` (ou
- * `error`) via query params; nunca com o token em si. Esta página apenas
- * repassa esses valores para a janela que abriu o popup via `postMessage` e
- * se fecha — a troca do `handoff_code` pelo token acontece em `authClient`.
+ * Página de retorno do fluxo OAuth no navegador (issue #1/#30, fallback de
+ * desenvolvimento fora do Tauri — no desktop o retorno é por deep link, não
+ * por aqui). O backend faz uma navegação de verdade pra cá — não é popup —
+ * com o resultado no fragmento da URL: sucesso vem como
+ * `#access_token=...&refresh_token=...&provider=...`, erro como
+ * `#error=<código>`. Esta página persiste a sessão (ou guarda o erro) e
+ * volta pro app; quem lê o resultado é `useSession` (AccountProvider) no
+ * próximo carregamento.
  */
 function OAuthCallback() {
-  const [delivered, setDelivered] = useState(false);
+  const [status, setStatus] = useState("concluindo o login...");
 
   useEffect(() => {
-    if (!window.opener) return;
-    window.opener.postMessage({ type: "screenshare-oauth", state, handoffCode, error }, location.origin);
-    setDelivered(true);
-    const timer = window.setTimeout(() => window.close(), 600);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    completeOAuthFromFragment(hash).finally(() => {
+      if (cancelled) return;
+      setStatus("voltando ao screenshare...");
+      location.href = "/";
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -33,11 +37,7 @@ function OAuthCallback() {
       <section className="form-card">
         <BrandMark />
         <h1>screenshare</h1>
-        <p role="status" className="auth-status">
-          {delivered
-            ? "login concluido. volte ao screenshare; esta aba pode ser fechada"
-            : "abra esta pagina pelo aplicativo screenshare"}
-        </p>
+        <p role="status" className="auth-status">{status}</p>
       </section>
     </main>
   );
