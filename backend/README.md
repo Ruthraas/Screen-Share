@@ -1,5 +1,7 @@
 # ScreenShare Backend
 
+[![Backend CI](https://github.com/Ruthraas/Screen-Share/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Ruthraas/Screen-Share/actions/workflows/backend-ci.yml)
+
 Serviço remoto do ScreenShare — HTTP (Fastify) + WebSocket (a partir da
 issue #37). Não roda dentro do processo Tauri; é implantado e executado
 separadamente. Ver [`docs/backend/ARQUITETURA.md`](../docs/backend/ARQUITETURA.md)

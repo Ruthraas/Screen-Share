@@ -243,6 +243,25 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     roteamento ponto-a-ponto com `from` do servidor, broadcast, mensagem
     inválida, `peer-left` ao desconectar, e SDP não vaza no log). `npm run
     build` ok.
+- **#46 — CI e ambiente reproduzível** (2026-09-12, branch
+  `feat/backend-ci`): `.github/workflows/backend-ci.yml` roda em
+  `ubuntu-latest` **e** `windows-latest` (a mesma matriz de plataforma que
+  o `better-sqlite3` já cobre com prebuild — issue #58) a cada PR/push que
+  toque `backend/`: `npm ci` (usa `backend/.nvmrc` via
+  `actions/setup-node`, então já fixa Node 22 e o `ignore-scripts` do
+  #58), `npm run build`, `npm test`, e por fim `npm run migrate` contra
+  um `.db` vazio descartável (variáveis TURN/Firebase são valores falsos
+  só pra passar a validação de config, nunca reais/secretas). Ambiente
+  local já sobe por comando documentado desde #28 (`backend/README.md`) —
+  não precisou de devcontainer pra satisfazer o critério de aceite.
+  Dependência com #44 (observability) listada na issue original não é
+  necessária pro escopo real (lint/build/test/migrações) — segui sem
+  esperar #44, que trata de logs/métricas, não de CI. Validado: workflow
+  rodado localmente passo a passo nos dois shells (bash e PowerShell) com
+  exatamente os mesmos comandos/env do YAML — `npm ci`+`build`+`test`
+  71/71 (nenhum teste novo nesta issue, é config de CI) e `npm run
+  migrate` aplicando as duas migrações num banco novo. A execução de verdade no GitHub Actions só
+  se confirma quando o PR for aberto (não dá pra simular 100% localmente).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
