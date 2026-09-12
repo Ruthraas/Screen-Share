@@ -1,4 +1,5 @@
 import { useAccount } from "../components/layout/AccountProvider";
+import { EmptyPanel } from "../components/ui/AsyncState";
 import { Button } from "../components/ui/Button";
 import { MultiScreen } from "./MultiScreen";
 import type { Group } from "../data/types";
@@ -28,7 +29,7 @@ export function Groups({ onCreate }: { onCreate: () => void }) {
           {groups.map(group => <GroupItem key={group.id} group={group} onClick={() => selectGroup(group.id)} isSelected={selected?.id === group.id} />)}
         </div>
       ) : (
-        <p className="muted">nenhum grupo criado neste dispositivo</p>
+        <EmptyPanel title="nenhum grupo criado neste dispositivo" />
       )}
       {selected ? <MultiScreen /> : null}
     </section>
