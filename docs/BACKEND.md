@@ -80,6 +80,26 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   varredura manual do diff por padrões conhecidos (chaves privadas, tokens
   AWS/GCP/Slack/Stripe) — nada encontrado; nenhum arquivo `.env` real
   rastreado.
+- **#30 — Verificação de tokens de autenticação** (2026-09-12, branch
+  `feat/backend-auth-tokens`): `src/auth/verifier.ts` define a interface
+  `TokenVerifier`/`AuthIdentity`; `src/auth/firebaseTokenVerifier.ts`
+  implementa via `firebase-admin` (`verifyIdToken`), carregando a service
+  account de `FIREBASE_SERVICE_ACCOUNT_JSON`/`_PATH` (#29); `src/auth/plugin.ts`
+  é um hook `onRequest` global que exige `Authorization: Bearer <token>` em
+  toda rota exceto as listadas em `publicPaths` (hoje só `/health`) — token
+  ausente, malformado, inválido ou expirado sempre responde `401
+  {"error":{"code":"unauthorized",...}}` usando o envelope de erro do
+  contrato (#27); em sucesso, `request.auth = { uid, email }` fica
+  disponível pros handlers. Identidade vem **só** do token verificado, nunca
+  de campo enviado pelo cliente. `src/testing/fakeTokenVerifier.ts` (só
+  testes) permite testar o plugin e o server sem Firebase real. Efeito
+  colateral notado nos testes: como a autenticação roda antes do roteamento,
+  uma rota inexistente sem token responde `401` em vez de `404` (só vira
+  `404` com token válido) — decisão deliberada, evita expor a um cliente não
+  autenticado quais rotas existem. Validado: `npm test` 15/15 (6 novos
+  testes do plugin + os 2 do server ajustados), `npm run build` ok, e
+  smoke test manual local (`/health` público 200, rota qualquer sem token
+  401, com token válido segue pro roteamento normal).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
