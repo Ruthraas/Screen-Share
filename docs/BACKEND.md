@@ -59,6 +59,27 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   ainda — só a base. Nota: o encerramento gracioso via sinal não pôde ser
   validado ponta a ponta neste ambiente Windows de desenvolvimento (ver
   `backend/README.md`); `app.close()` em si é coberto pelos testes.
+- **#29 — Configuração e gestão de segredos** (2026-09-12, branch
+  `feat/backend-config-secrets`): `src/config.ts` reescrito com schema
+  `zod` cobrindo banco (`DATABASE_PATH`), autenticação (Firebase service
+  account, path ou JSON), sinalização (`SIGNALING_PATH`) e TURN
+  (`TURN_HOST`/`TURN_SECRET`). Variáveis sem valor seguro por padrão
+  (banco, credencial Firebase, segredo TURN) são obrigatórias; sem elas o
+  processo sai com `ConfigError` listando cada campo problemático, sem
+  stack trace. `toPublicSummary()` redige segredos antes de qualquer log —
+  `index.ts` loga a config no startup só com essa versão redigida.
+  `.env.example` criado com placeholders (sem valores reais);
+  `backend/data/` e `backend/secrets/` adicionados ao `.gitignore` da raiz.
+  Decisão registrada em `docs/backend/ARQUITETURA.md`: persistência via
+  SQLite (`better-sqlite3`) e verificação de token via `firebase-admin`
+  (justificativas lá). Validado: `npm test` cobre config válida, ausente
+  (banco/Firebase faltando) e inválida (`PORT` fora do intervalo), mais um
+  teste que garante que `toPublicSummary()` não vaza segredo nenhum;
+  testado manualmente também via `node dist/index.js` sem env (falha limpa)
+  e com env válida (sobe e loga config redigida). Scanner de segredos:
+  varredura manual do diff por padrões conhecidos (chaves privadas, tokens
+  AWS/GCP/Slack/Stripe) — nada encontrado; nenhum arquivo `.env` real
+  rastreado.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
