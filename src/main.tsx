@@ -2,6 +2,7 @@ import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CreateGroupModal } from "./components/groups/CreateGroupModal";
 import { AppShell } from "./components/layout/AppShell";
+import { ErrorBoundary } from "./components/layout/ErrorBoundary";
 import { SplashScreen } from "./components/layout/SplashScreen";
 import { EmptyState } from "./pages/EmptyState";
 import { Login } from "./pages/Login";
@@ -119,6 +120,8 @@ function AppFrame({ ready, children }: { ready: boolean; children: React.ReactNo
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
