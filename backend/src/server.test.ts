@@ -9,6 +9,7 @@ function build() {
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
+    signalingPath: "/ws",
   });
 }
 

@@ -20,7 +20,12 @@ async function main(): Promise<void> {
   const applied = migrateUp(db);
 
   const verifier = new FirebaseTokenVerifier(config.auth);
-  const app = buildServer({ verifier, db, corsAllowedOrigins: config.cors.allowedOrigins });
+  const app = buildServer({
+    verifier,
+    db,
+    corsAllowedOrigins: config.cors.allowedOrigins,
+    signalingPath: config.signaling.path,
+  });
   app.log.info({ config: toPublicSummary(config), migrationsApplied: applied }, "configuração carregada");
 
   let shuttingDown = false;

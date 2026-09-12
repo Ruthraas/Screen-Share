@@ -27,7 +27,10 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opt
   app.decorateRequest("auth", undefined);
 
   app.addHook("onRequest", async (request, reply) => {
-    if (publicPaths.has(request.url)) {
+    // request.url inclui a query string (ex.: "/ws?token=...&groupId=...")
+    // — comparar só o pathname, senão nenhuma rota com query bate no Set.
+    const pathname = request.url.split("?")[0];
+    if (publicPaths.has(pathname)) {
       return;
     }
 
