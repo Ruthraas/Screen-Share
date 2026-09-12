@@ -1,0 +1,80 @@
+name: Tarefa de implementação
+description: Crie uma tarefa concreta e limitada para execução humana ou por IA
+title: ""
+labels: ["status: ready"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Responsabilidade
+      description: Frontend é de @Ruthraas; backend é de @ProgVictorPe.
+      options:
+        - Frontend — React, TypeScript, cliente Tauri e experiência desktop
+        - Backend — serviços, persistência, signaling e infraestrutura TURN
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: Explique o problema atual e por que esta tarefa existe.
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo
+      description: Declare um resultado único, observável e verificável.
+    validations:
+      required: true
+  - type: textarea
+    id: allowed
+    attributes:
+      label: Escopo permitido
+      description: Liste os módulos e comportamentos que podem ser modificados.
+    validations:
+      required: true
+  - type: textarea
+    id: forbidden
+    attributes:
+      label: Não alterar
+      description: Registre limites explícitos para impedir mudanças arbitrárias por pessoas ou IAs.
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requisitos de implementação
+      description: Inclua contratos, regras de segurança e restrições técnicas aplicáveis.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+      placeholder: |
+        - [ ] Resultado observável 1
+        - [ ] Resultado observável 2
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validação obrigatória
+      description: Informe comandos e cenários que devem ser executados antes de concluir.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependências
+      description: Cite issues bloqueadoras usando #número ou escreva “Nenhuma”.
+    validations:
+      required: true
+  - type: checkboxes
+    id: ai_guardrail
+    attributes:
+      label: Compromisso de escopo
+      options:
+        - label: Li README.md e CONTRIBUTING.md e não ampliarei o escopo sem uma nova decisão registrada.
+          required: true

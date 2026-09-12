@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+tmp-*.png
+src-tauri/target/
+.env
+.env.local
+artifacts/
+src-tauri/icons/SpotifySetup.exe

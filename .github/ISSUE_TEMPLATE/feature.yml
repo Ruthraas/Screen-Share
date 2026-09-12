@@ -1,0 +1,38 @@
+name: Funcionalidade
+description: Proponha uma melhoria ou nova capacidade do produto
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema a resolver
+      description: Descreva a necessidade do usuário ou da equipe.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo proposto
+      description: Explique o comportamento desejado sem impor detalhes desnecessários de implementação.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: Fora do escopo
+      description: Registre integrações ou comportamentos que devem ficar para outra issue.
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependências e riscos
+      description: Cite issues bloqueadoras, decisões pendentes ou impacto de segurança.
