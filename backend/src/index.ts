@@ -1,6 +1,6 @@
 import { buildServer } from "./server.js";
 import { loadConfig, toPublicSummary, ConfigError } from "./config.js";
-import { FirebaseTokenVerifier } from "./auth/firebaseTokenVerifier.js";
+import { SessionTokenVerifier } from "./auth/sessionTokenVerifier.js";
 import { openDatabase } from "./db/connection.js";
 import { migrateUp } from "./db/migrate.js";
 
@@ -19,10 +19,11 @@ async function main(): Promise<void> {
   const db = openDatabase(config.database.path);
   const applied = migrateUp(db);
 
-  const verifier = new FirebaseTokenVerifier(config.auth);
+  const verifier = new SessionTokenVerifier(config.auth.sessionSigningSecret);
   const app = buildServer({
     verifier,
     db,
+    authConfig: config.auth,
     corsAllowedOrigins: config.cors.allowedOrigins,
     signalingPath: config.signaling.path,
   });

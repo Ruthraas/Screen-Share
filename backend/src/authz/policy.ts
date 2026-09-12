@@ -1,4 +1,4 @@
-import { ForbiddenError, NotFoundError } from "../groups/errors.js";
+import { ForbiddenError, NotFoundError } from "../errors.js";
 
 export type Role = "owner" | "admin" | "member";
 

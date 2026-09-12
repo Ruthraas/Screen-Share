@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildServer } from "./server.js";
 import { FakeTokenVerifier } from "./testing/fakeTokenVerifier.js";
 import { createTestDb } from "./testing/testDb.js";
+import { testAuthConfig } from "./testing/testAuthConfig.js";
 
 const DEV_ORIGIN = "http://127.0.0.1:5173";
 const TAURI_ORIGIN = "https://tauri.localhost";
@@ -12,6 +13,7 @@ function build() {
   return buildServer({
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
+    authConfig: testAuthConfig(),
     corsAllowedOrigins: [DEV_ORIGIN, TAURI_ORIGIN],
     signalingPath: "/ws",
   });

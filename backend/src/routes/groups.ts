@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireMembership, requireRole } from "../authz/policy.js";
-import { ValidationError } from "../groups/errors.js";
+import { ValidationError } from "../errors.js";
 import type { GroupsRepository } from "../groups/repository.js";
 
 const createGroupSchema = z.object({ name: z.string().min(1).max(80) });

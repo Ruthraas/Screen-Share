@@ -13,6 +13,8 @@ export interface AuthPluginOptions {
   verifier: TokenVerifier;
   /** Caminhos exatos que não exigem token (ex.: "/health"). */
   publicPaths?: string[];
+  /** Prefixos que não exigem token (ex.: "/v1/auth/" — cobre rotas dinâmicas como /v1/auth/oauth/:provider/start). */
+  publicPrefixes?: string[];
 }
 
 /**
@@ -23,6 +25,7 @@ export interface AuthPluginOptions {
  */
 export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
   const publicPaths = new Set(opts.publicPaths ?? []);
+  const publicPrefixes = opts.publicPrefixes ?? [];
 
   app.decorateRequest("auth", undefined);
 
@@ -30,7 +33,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opt
     // request.url inclui a query string (ex.: "/ws?token=...&groupId=...")
     // — comparar só o pathname, senão nenhuma rota com query bate no Set.
     const pathname = request.url.split("?")[0];
-    if (publicPaths.has(pathname)) {
+    if (publicPaths.has(pathname) || publicPrefixes.some((prefix) => pathname.startsWith(prefix))) {
       return;
     }
 

@@ -80,7 +80,8 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   varredura manual do diff por padrões conhecidos (chaves privadas, tokens
   AWS/GCP/Slack/Stripe) — nada encontrado; nenhum arquivo `.env` real
   rastreado.
-- **#30 — Verificação de tokens de autenticação** (2026-09-12, branch
+- **#30 (v1, SUBSTITUÍDA — ver entrada de #27+#29+#30 mais abaixo) —
+  Verificação de tokens de autenticação** (2026-09-12, branch
   `feat/backend-auth-tokens`): `src/auth/verifier.ts` define a interface
   `TokenVerifier`/`AuthIdentity`; `src/auth/firebaseTokenVerifier.ts`
   implementa via `firebase-admin` (`verifyIdToken`), carregando a service
@@ -262,6 +263,71 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   71/71 (nenhum teste novo nesta issue, é config de CI) e `npm run
   migrate` aplicando as duas migrações num banco novo. A execução de verdade no GitHub Actions só
   se confirma quando o PR for aberto (não dá pra simular 100% localmente).
+- **#27 + #29 + #30 — autenticação própria substitui o Firebase Auth**
+  (2026-09-12, branch `feat/backend-own-auth`, um PR só — as três issues
+  ficaram circulares entre si na reabertura do Ruthraas, então é uma etapa
+  só de verdade). **Mudança de produto, não técnica**: o backend deixa de
+  verificar token do Firebase e passa a ser dono da identidade —
+  cadastro/login por e-mail+senha e OAuth 2.0 com Google, GitHub e Discord.
+  Decisão completa e endpoints de cada provedor documentados em
+  `docs/backend/ARQUITETURA.md` §5. Resumo do que mudou:
+  - `firebase-admin` **removido** das dependências (bônus: as 2
+    vulnerabilidades moderadas transitivas que vínhamos carregando desde
+    #29 também saem, já que vinham de uma dependência dele).
+    `src/auth/firebaseTokenVerifier.ts` apagado.
+  - Nova migração `0003_users_and_sessions.sql`: `users` (e-mail opcional,
+    hash de senha opcional — conta só-OAuth não tem senha),
+    `oauth_accounts` (vincula `provider`+`providerAccountId` a um usuário,
+    permite múltiplos provedores por pessoa), `refresh_tokens` (só o hash
+    fica no banco).
+  - `src/auth/password.ts` — hash com `scrypt` (nativo do Node, sem
+    dependência nova) + `PASSWORD_PEPPER` da config.
+  - `src/auth/signedPayload.ts` + `src/auth/sessionTokens.ts` — access
+    token HMAC de 15 min (sem consulta ao banco pra verificar) + refresh
+    token opaco hasheado e rotativo (30 dias, revogável).
+  - `src/auth/oauthProviders.ts` — Google/GitHub/Discord por trás da mesma
+    interface `OAuthProvider`, usando `fetch` nativo (sem SDK de
+    terceiro). Só o **Google tem credenciais reais configuradas** até
+    agora — GitHub e Discord respondem `404` em `/start` até o Ruthraas
+    criar os apps nas consoles de desenvolvedor deles (não é algo que dá
+    pra fazer por aqui).
+  - `src/routes/auth.ts` — `POST /v1/auth/register`, `/login`, `/refresh`,
+    `/logout`, `GET /v1/auth/oauth/:provider/start` e `/callback`. Login
+    errado (senha ou e-mail) sempre responde o mesmo `401` genérico.
+    Callback do OAuth sempre redireciona (nunca devolve JSON) — sucesso e
+    erro chegam no frontend por um **fragmento** da URL, nunca query
+    string, pra não vazar token em log de proxy/servidor.
+  - `src/auth/plugin.ts` ganhou `publicPrefixes` (além de `publicPaths`)
+    pra cobrir rotas dinâmicas como `/v1/auth/oauth/:provider/start`.
+  - Erros de domínio (`src/groups/errors.ts`) movidos pra `src/errors.ts`
+    — pararam de ser exclusivos de "grupos" no momento em que `auth`
+    também passou a lançá-los; ganhou `UnauthorizedError` (401), mapeado
+    no `setErrorHandler` central junto dos outros.
+  - `.env.example`, `docs/backend/openapi.yaml` (rotas `/auth/*`
+    documentadas, descrição do `bearerAuth` atualizada) e
+    `docs/backend/ARQUITETURA.md` §5 reescritos.
+  - `backend/package.json`: `dev`/`start`/`migrate` agora usam
+    `--env-file-if-exists=.env` (flag nativa do Node 20.6+) — o
+    `backend/.env` passa a carregar sozinho, sem precisar de `dotenv` como
+    dependência nem de exportar variável manualmente.
+  - **Bug real encontrado e corrigido nesta etapa**: o `.env` da raiz
+    recebeu `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` colados sem o nome
+    da variável na frente (só o valor, numa linha solta) — nunca teriam
+    sido lidos por nada. Corrigido: valores movidos pro `backend/.env`
+    (nunca a raiz — client secret é segredo de backend, a raiz é do
+    frontend) com os nomes certos.
+  - Validado: `npm test` **116/116** (43 testes novos — senha, payload
+    assinado, tokens de sessão, repositório de usuários/OAuth, URLs de
+    autorização dos 3 provedores, e a suíte de rotas cobrindo
+    registro/login/refresh/logout completos + fluxo OAuth inteiro com
+    provider falso, incluindo state inválido/expirado, erro do provedor
+    nunca repassado cru, código de troca falho); `npm run build` ok;
+    OpenAPI validado (`@redocly/cli lint`, só warnings cosméticos —
+    licença ausente e "callback só tem 302" é uma escolha de design, não
+    falha). **Smoke test real** contra o processo (não só testes): registro
+    → login → token de sessão autenticando `/v1/groups` de verdade, e
+    `GET /v1/auth/oauth/google/start` redirecionando pra uma URL real do
+    Google com o `client_id` de verdade formatado certinho.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -318,7 +384,10 @@ _(o que o front precisa implementar/expor, ou o que o backend precisa que o fron
 Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Grupos e convites já estão implementados e testados** (presença/heartbeat ainda não — isso é #36) — dá pra integrar de verdade contra `/v1/groups` e `/v1/invites`, não é mais só o papel. Pontos que o frontend precisa saber desde já:
 
 - **Base URL/versionamento**: todas as rotas HTTP terão prefixo `/v1/...`; mudança incompatível vira `/v2/...`, `/v1` nunca muda de forma retroativa.
-- **Autenticação**: `Authorization: Bearer <idToken do Firebase Auth>` em toda requisição — o mesmo token que `src/services/firebase.ts` já obtém no login. Verificação real do token (#30) está implementada; sem header ou token invalido/expirado sempre dá `401`.
+- **Autenticação MUDOU DE VERDADE (2026-09-12, #30)**: não é mais token do Firebase. `Authorization: Bearer <accessToken>` em toda requisição, onde `accessToken` vem de `POST /v1/auth/register`, `/login` ou do callback OAuth — **não mais de `src/services/firebase.ts`**. Token de acesso dura só 15 min; usar `refreshToken` (mesma resposta) em `POST /v1/auth/refresh` antes de expirar pra pegar um par novo (o antigo é invalidado — rotação, não dá pra reusar). `POST /v1/auth/logout` revoga o refresh token.
+  - **`src/oauth.tsx` do frontend precisa ser reescrito** — hoje ele faz `signInWithPopup` do Firebase direto no cliente e chama endpoints próprios (`/complete`, `/cancel`) que não existem no backend novo. O fluxo novo é: o cliente navega (não popup — é um redirect de verdade) pra `GET /v1/auth/oauth/{google|github|discord}/start` no backend; o backend redireciona pro provedor; o provedor volta pro backend (`/callback`); o backend troca o código, cria a sessão e só então redireciona pro frontend em `OAUTH_FRONTEND_REDIRECT_URL` com o resultado num **fragmento** da URL: sucesso = `#access_token=...&refresh_token=...&provider=...`; erro = `#error=<código>` (`invalid_state`, `missing_code`, `provider_error`, `provider_not_configured`, `provider_unknown`). `OAUTH_FRONTEND_REDIRECT_URL` tem default `http://127.0.0.1:5173/oauth.html` (dev) — combinar com o backend qual URL usar em produção (provavelmente o esquema do Tauri).
+  - **Cadastro/login por e-mail e senha também são novos**: `POST /v1/auth/register` (e-mail+senha, 201, já loga — devolve a sessão) e `POST /v1/auth/login`. Senha errada e conta inexistente dão a mesma resposta `401` genérica de propósito.
+  - **Só o Google tem credenciais reais configuradas até agora** — GitHub e Discord respondem `404` em `/start` até alguém criar os apps OAuth nas consoles de desenvolvedor deles (não depende do backend, é cadastro externo).
 - **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI. Códigos em uso: `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation_error` (422).
 - **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
 - **CORS (#59) já configurado**: o WebView do Tauri empacotado (`https://tauri.localhost`) e o dev server do Vite (`http://127.0.0.1:5173`) já estão na allowlist — chamadas fetch/XHR do cliente devem funcionar sem precisar de proxy nem de desabilitar segurança do WebView. Se o app rodar de outra origem (porta diferente, outro esquema), o backend vai rejeitar silenciosamente (sem `Access-Control-Allow-Origin`) — avisar o lado backend pra adicionar em `CORS_ALLOWED_ORIGINS`.

@@ -1,4 +1,4 @@
-/** Erros de domínio dos módulos de grupos/convites — mapeados pro envelope HTTP em src/server.ts. */
+/** Erros de domínio compartilhados por todos os módulos — mapeados pro envelope HTTP único em src/server.ts. */
 
 export class NotFoundError extends Error {
   constructor(message = "Recurso não encontrado.") {
@@ -25,5 +25,12 @@ export class ValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ValidationError";
+  }
+}
+
+export class UnauthorizedError extends Error {
+  constructor(message = "Token ausente ou inválido.") {
+    super(message);
+    this.name = "UnauthorizedError";
   }
 }
