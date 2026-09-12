@@ -574,16 +574,10 @@ textarea {
   width: 100%;
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--bg);
   padding: 24px;
   position: relative;
   z-index: 1;
-}
-
-.login-window.is-signup {
-  width: 100vw;
 }
 
 .terminal-titlebar span {
@@ -1726,10 +1720,8 @@ button:disabled,
   margin: auto;
 }
 .login-window {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
   overflow: auto;
-  transition: width 260ms ease;
   border: 0;
   border-radius: 0;
   display: flex;
