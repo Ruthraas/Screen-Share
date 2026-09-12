@@ -4,6 +4,11 @@ name: Backend CI
 # build/test/migrações reproduzíveis, na mesma versão de Node que a issue
 # #58 já fixou (Node 22, backend/.nvmrc) — a mesma dor de "funciona na
 # minha máquina" que o #58 resolveu localmente, cobrida aqui também.
+#
+# Só Windows por agora (2026-09-12, a pedido do usuário) — é o ambiente de
+# desenvolvimento real (Ruthraas) e o único validado até aqui. Build pra
+# Linux fica pra depois que o fluxo no Windows estiver redondo; ver
+# docs/BACKEND.md antes de reativar o matrix com ubuntu-latest.
 
 on:
   pull_request:
@@ -18,10 +23,7 @@ on:
 
 jobs:
   build-and-test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: backend
@@ -43,23 +45,13 @@ jobs:
       - name: Testes
         run: npm test
 
-      - name: Migrações em banco vazio (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          set -eu
-          DATABASE_PATH=./ci-migrate-check.db \
-          FIREBASE_SERVICE_ACCOUNT_JSON='{"project_id":"ci"}' \
-          TURN_HOST=turn.ci.invalid \
-          TURN_SECRET=ci-only-not-a-real-secret \
-          npm run migrate
-          rm -f ./ci-migrate-check.db
-
-      - name: Migrações em banco vazio (Windows)
-        if: runner.os == 'Windows'
+      - name: Migrações em banco vazio
         shell: pwsh
         env:
           DATABASE_PATH: ./ci-migrate-check.db
-          FIREBASE_SERVICE_ACCOUNT_JSON: '{"project_id":"ci"}'
+          SESSION_SIGNING_SECRET: ci-only-signing-secret-32-characters-min
+          PASSWORD_PEPPER: ci-only-pepper-16-chars
+          OAUTH_REDIRECT_BASE_URL: http://127.0.0.1:8787
           TURN_HOST: turn.ci.invalid
           TURN_SECRET: ci-only-not-a-real-secret
         run: |

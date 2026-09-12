@@ -328,6 +328,16 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     → login → token de sessão autenticando `/v1/groups` de verdade, e
     `GET /v1/auth/oauth/google/start` redirecionando pra uma URL real do
     Google com o `client_id` de verdade formatado certinho.
+  - **CI quebrou no PR de verdade (2026-09-12, mesmo dia) e foi corrigido
+    no mesmo PR**: `.github/workflows/backend-ci.yml` (issue #46) ainda
+    setava `FIREBASE_SERVICE_ACCOUNT_JSON`/`TURN_HOST`/`TURN_SECRET` pro
+    passo de `npm run migrate` — variáveis que essa mesma etapa (#29)
+    trocou por `SESSION_SIGNING_SECRET`/`PASSWORD_PEPPER`/
+    `OAUTH_REDIRECT_BASE_URL`. Os dois jobs (`ubuntu-latest` e
+    `windows-latest`) falhavam exatamente nesse passo. Corrigido junto com
+    um pedido do usuário: **matrix reduzida pra só `windows-latest` por
+    agora** — build/CI pra Linux fica pra depois que o fluxo no Windows
+    estiver redondo, não considerar Linux ainda.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
