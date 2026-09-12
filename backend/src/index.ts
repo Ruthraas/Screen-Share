@@ -1,5 +1,6 @@
 import { buildServer } from "./server.js";
 import { loadConfig, toPublicSummary, ConfigError } from "./config.js";
+import { FirebaseTokenVerifier } from "./auth/firebaseTokenVerifier.js";
 
 async function main(): Promise<void> {
   let config;
@@ -13,7 +14,8 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  const app = buildServer();
+  const verifier = new FirebaseTokenVerifier(config.auth);
+  const app = buildServer({ verifier });
   app.log.info({ config: toPublicSummary(config) }, "configuração carregada");
 
   let shuttingDown = false;
