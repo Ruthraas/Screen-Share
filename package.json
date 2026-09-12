@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "test:frontend": "node --test --experimental-strip-types tests/frontend/*.test.ts",
+    "test:e2e": "node scripts/check-ui.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
