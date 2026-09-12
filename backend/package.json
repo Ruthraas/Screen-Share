@@ -5,7 +5,7 @@
   "description": "Serviço remoto do ScreenShare (grupos, convites, presença, TURN, sinalização). Ver docs/backend/ARQUITETURA.md.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22 <25"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

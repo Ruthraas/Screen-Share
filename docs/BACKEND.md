@@ -150,6 +150,30 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   Verificação de token do Firebase de verdade contra um convite real não
   foi possível sem projeto Firebase disponível — comportamento cobre
   pelos testes com verificador falso, igual nas issues anteriores.
+- **#58 — Instalação reproduzível no Windows** (2026-09-12, branch
+  `fix/backend-windows-install`): causa raiz encontrada e reproduzida —
+  `better-sqlite3` tem um `binding.gyp`, e o npm por padrão roda
+  `node-gyp rebuild` nele em toda instalação (`npm ci`/`npm install`)
+  **mesmo já existindo um binário pré-compilado certo** em
+  `node_modules/better-sqlite3/prebuilds/<plataforma>-<arch>.node` pra
+  linux/darwin/win32 em x64/arm64. Isso exige Python + compilador C++ só
+  pra recompilar algo que já estava pronto, e falhava (`node-gyp rebuild`
+  → "Could not find any Python installation") em qualquer máquina Windows
+  sem esse toolchain. Correção: `backend/.npmrc` com `ignore-scripts=true`
+  (pula o rebuild — verificado que nenhuma outra dependência da árvore
+  precisa de install/postinstall) + `engine-strict=true` (falha cedo e
+  claro fora da faixa de Node suportada, em vez de instalar silenciosamente
+  numa versão não testada). `backend/.nvmrc` fixa Node 22; `engines` em
+  `package.json` corrigido de `>=20` (nunca funcionaria — o próprio
+  `better-sqlite3@13` exige `>=22`) para `>=22 <25`. SQLite **não** foi
+  removido/trocado (fora do escopo da issue). Validado do zero: `rm -rf
+  node_modules dist`, `npm ci` (Node v24.14.1, npm 11.11.0, Windows 10
+  Home 10.0.19045). Confirmado que `node_modules/better-sqlite3/build/`
+  não é criado (ou seja, nenhuma compilação rodou — usa só o prebuild),
+  `npm run build` ok, `npm test` 36/36. Esta máquina tem Python instalado,
+  então não reproduz sozinha o ambiente exato do Ruthraas — a evidência de
+  que a correção funciona é a ausência do diretório `build/` (prova que o
+  `node-gyp rebuild` nem chegou a rodar), não a falta de Python aqui.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
