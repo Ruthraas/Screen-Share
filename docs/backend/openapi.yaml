@@ -1,0 +1,571 @@
+openapi: 3.1.0
+info:
+  title: ScreenShare Backend API
+  version: "1.0.0"
+  description: >
+    Contrato HTTP inicial do backend do ScreenShare (issue #27). Cobre
+    grupos, convites, presença e emissão de credenciais TURN. A
+    sinalização WebRTC (offer/answer/ICE) usa WebSocket, definido
+    separadamente na issue #38 — não faz parte deste documento.
+    Implementação ainda não existe; este arquivo é o contrato a
+    implementar issue por issue (ver docs/backend/ARQUITETURA.md).
+servers:
+  - url: /v1
+    description: Versão atual. Mudanças incompatíveis usam /v2 em vez de alterar esta.
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: groups
+    description: Criação e gestão de grupos privados.
+  - name: invites
+    description: Convites com expiração e revogação.
+  - name: presence
+    description: Heartbeat e consulta de presença dentro de um grupo.
+  - name: turn
+    description: Emissão de credenciais TURN temporárias.
+
+paths:
+  /groups:
+    post:
+      tags: [groups]
+      summary: Criar um grupo privado
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupRequest"
+            examples:
+              default:
+                value:
+                  name: "Equipe de projeto"
+      responses:
+        "201":
+          description: Grupo criado; o usuário autenticado é o proprietário.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+              examples:
+                default:
+                  value:
+                    id: "grp_9f1a"
+                    name: "Equipe de projeto"
+                    ownerId: "usr_123"
+                    role: "owner"
+                    createdAt: "2026-09-12T12:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [groups]
+      summary: Listar grupos do usuário autenticado
+      operationId: listGroups
+      responses:
+        "200":
+          description: Grupos onde o usuário é proprietário ou membro.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Group"
+              examples:
+                default:
+                  value:
+                    groups:
+                      - id: "grp_9f1a"
+                        name: "Equipe de projeto"
+                        ownerId: "usr_123"
+                        role: "owner"
+                        createdAt: "2026-09-12T12:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups]
+      summary: Obter detalhes de um grupo
+      operationId: getGroup
+      responses:
+        "200":
+          description: Detalhes do grupo, incluindo membros.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [groups]
+      summary: Atualizar o nome do grupo
+      operationId: updateGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGroupRequest"
+      responses:
+        "200":
+          description: Grupo atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [groups]
+      summary: Excluir o grupo (somente proprietário)
+      operationId: deleteGroup
+      description: >
+        Exclusão transacional (issue #33): remove grupo, membros e
+        convites associados. Não afeta dados fora do grupo.
+      responses:
+        "204":
+          description: Grupo excluído.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /groups/{groupId}/leave:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [groups]
+      summary: Saída segura de um membro do grupo
+      operationId: leaveGroup
+      description: >
+        O proprietário não pode saír sem transferir ou excluir o grupo
+        primeiro (issue #33).
+      responses:
+        "204":
+          description: Usuário removido do grupo.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Proprietário não pode saír sem transferir/excluir o grupo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /groups/{groupId}/invites:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [invites]
+      summary: Criar um convite para o grupo
+      operationId: createInvite
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteRequest"
+            examples:
+              default:
+                value:
+                  expiresInMinutes: 1440
+                  maxUses: 1
+      responses:
+        "201":
+          description: Convite criado com token opaco de uso único (ou limitado).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+              examples:
+                default:
+                  value:
+                    id: "inv_71cd"
+                    token: "8b6a1f2e9c7d4a3b"
+                    groupId: "grp_9f1a"
+                    expiresAt: "2026-09-13T12:00:00Z"
+                    maxUses: 1
+                    usedCount: 0
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    get:
+      tags: [invites]
+      summary: Listar convites ativos do grupo
+      operationId: listInvites
+      responses:
+        "200":
+          description: Convites não expirados e não revogados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/invites/{inviteId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - name: inviteId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [invites]
+      summary: Revogar um convite
+      operationId: revokeInvite
+      responses:
+        "204":
+          description: Convite revogado; token deixa de ser aceito.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /invites/{token}/accept:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [invites]
+      summary: Aceitar um convite com um token válido
+      operationId: acceptInvite
+      description: Idempotente para o mesmo usuário (aceitar de novo não duplica a membresia).
+      responses:
+        "200":
+          description: Usuário adicionado ao grupo (ou já era membro).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Token inválido, expirado, revogado ou esgotado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /groups/{groupId}/presence/heartbeat:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [presence]
+      summary: Enviar heartbeat de presença
+      operationId: sendPresenceHeartbeat
+      description: >
+        Cliente chama periodicamente (issue #36 define o TTL). Sessão sem
+        heartbeat dentro do TTL expira e some da lista de presença.
+      responses:
+        "204":
+          description: Heartbeat registrado.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /groups/{groupId}/presence:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [presence]
+      summary: Consultar membros online do grupo
+      operationId: getPresence
+      responses:
+        "200":
+          description: Lista de sessões ativas (não expiradas) no grupo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PresenceEntry"
+              examples:
+                default:
+                  value:
+                    members:
+                      - userId: "usr_123"
+                        online: true
+                        lastSeenAt: "2026-09-12T12:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /turn-credentials:
+    post:
+      tags: [turn]
+      summary: Emitir credenciais TURN temporárias
+      operationId: issueTurnCredentials
+      description: >
+        Requer usuário autenticado (issue #41). Credenciais expiram em
+        minutos e nunca são persistidas em log ou repositório.
+      responses:
+        "201":
+          description: Credenciais de curta duração para o cliente configurar o RTCPeerConnection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TurnCredentials"
+              examples:
+                default:
+                  value:
+                    urls:
+                      - "turn:turn.screenshare.example:3478?transport=udp"
+                      - "turns:turn.screenshare.example:5349?transport=tcp"
+                    username: "1757683200:usr_123"
+                    credential: "base64-hmac-temporario"
+                    ttlSeconds: 600
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de ID do Firebase Auth do usuário autenticado no cliente.
+
+  parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Token ausente, inválido ou expirado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "unauthorized"
+                  message: "Token ausente ou inválido."
+                  correlationId: "b3f1c2d4"
+    Forbidden:
+      description: Usuário autenticado, mas sem permissão para esta ação (papel insuficiente).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "forbidden"
+                  message: "Você não tem permissão para esta ação."
+                  correlationId: "b3f1c2d5"
+    NotFound:
+      description: Recurso não existe ou não pertence ao usuário.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "not_found"
+                  message: "Recurso não encontrado."
+                  correlationId: "b3f1c2d6"
+    ValidationError:
+      description: Corpo da requisição inválido.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "validation_error"
+                  message: "O campo 'name' é obrigatório."
+                  correlationId: "b3f1c2d7"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, correlationId]
+          properties:
+            code:
+              type: string
+              description: Identificador estável e machine-readable do erro.
+            message:
+              type: string
+              description: Texto em pt-BR, seguro para exibir ao usuário.
+            correlationId:
+              type: string
+              description: Correlaciona com os logs do backend (issue #44). Nunca contém dado sensível.
+
+    Role:
+      type: string
+      enum: [owner, admin, member]
+
+    Group:
+      type: object
+      required: [id, name, ownerId, role, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ownerId:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+          description: Papel do usuário autenticado dentro deste grupo.
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupDetail:
+      allOf:
+        - $ref: "#/components/schemas/Group"
+        - type: object
+          properties:
+            members:
+              type: array
+              items:
+                type: object
+                required: [userId, role]
+                properties:
+                  userId:
+                    type: string
+                  role:
+                    $ref: "#/components/schemas/Role"
+
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+
+    UpdateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+
+    Invite:
+      type: object
+      required: [id, token, groupId, expiresAt, maxUses, usedCount]
+      properties:
+        id:
+          type: string
+        token:
+          type: string
+          description: Token opaco enviado ao convidado; não é o mesmo que o id.
+        groupId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        maxUses:
+          type: integer
+          minimum: 1
+        usedCount:
+          type: integer
+          minimum: 0
+
+    CreateInviteRequest:
+      type: object
+      properties:
+        expiresInMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          default: 1440
+        maxUses:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 1
+
+    PresenceEntry:
+      type: object
+      required: [userId, online, lastSeenAt]
+      properties:
+        userId:
+          type: string
+        online:
+          type: boolean
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    TurnCredentials:
+      type: object
+      required: [urls, username, credential, ttlSeconds]
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+          description: "Formato TURN REST padrão: timestamp de expiração + identidade."
+        credential:
+          type: string
+          description: HMAC derivado do segredo do servidor TURN; nunca o segredo em si.
+        ttlSeconds:
+          type: integer
