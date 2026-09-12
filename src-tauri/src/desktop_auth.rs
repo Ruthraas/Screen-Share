@@ -13,6 +13,21 @@ pub struct Credential {
     state: String,
     id_token: Option<String>,
     access_token: Option<String>,
+    error: Option<String>,
+}
+
+fn browser_error(value: &Credential, state: &str) -> Option<&'static str> {
+    if value.state != state {
+        return None;
+    }
+
+    match value.error.as_deref()? {
+        "auth/popup-closed-by-user" | "auth/cancelled-popup-request" => Some("desktop-auth-cancelled"),
+        "auth/network-request-failed" => Some("desktop-auth-network"),
+        "auth/unauthorized-domain" => Some("desktop-auth-unauthorized-domain"),
+        "auth/operation-not-allowed" => Some("desktop-auth-provider-disabled"),
+        _ => Some("desktop-auth-provider-failed"),
+    }
 }
 
 fn header(request: &Request, name: &str) -> Option<String> {
@@ -43,7 +58,7 @@ fn login(provider: String) -> Result<Credential, String> {
         let path = request.url().split('?').next().unwrap_or("").to_string();
         if request.method() == &Method::Post && path == "/complete" {
             if header(&request, "Origin").as_deref() != Some(origin.as_str())
-                || header(&request, "Content-Type").as_deref() != Some("application/json")
+                || !header(&request, "Content-Type").as_deref().is_some_and(|value| value.starts_with("application/json"))
                 || request.body_length().map_or(true, |size| size > 16384) {
                 let _ = request.respond(Response::empty(403));
                 continue;
@@ -54,12 +69,37 @@ fn login(provider: String) -> Result<Credential, String> {
             }
             let parsed = serde_json::from_str::<Credential>(&body);
             match parsed {
+                Ok(value) if let Some(error) = browser_error(&value, &nonce) => {
+                    let _ = request.respond(Response::empty(204));
+                    return Err(error.into());
+                }
                 Ok(value) if valid_credential(&value, &nonce, &provider) => {
                     let _ = request.respond(Response::empty(204));
                     return Ok(value);
                 }
                 _ => { let _ = request.respond(Response::empty(403)); }
             }
+        } else if request.method() == &Method::Post && path == "/cancel" {
+            if header(&request, "Origin").as_deref() != Some(origin.as_str())
+                || !header(&request, "Content-Type").as_deref().is_some_and(|value| value.starts_with("application/json"))
+                || request.body_length().map_or(true, |size| size > 1024) {
+                let _ = request.respond(Response::empty(403));
+                continue;
+            }
+            let mut body = String::new();
+            if request.as_reader().take(1025).read_to_string(&mut body).is_err() {
+                let _ = request.respond(Response::empty(400));
+                continue;
+            }
+            let matches_state = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|value| value.get("state").and_then(|state| state.as_str()).map(|state| state == nonce))
+                .unwrap_or(false);
+            if matches_state {
+                let _ = request.respond(Response::empty(204));
+                return Err("desktop-auth-cancelled".into());
+            }
+            let _ = request.respond(Response::empty(403));
         } else if request.method() == &Method::Get && (path == "/oauth.html" || path.starts_with("/assets/")) {
             if let Some(file) = ASSETS.get_file(path.trim_start_matches('/')) {
                 let mime = if path.ends_with(".html") { "text/html; charset=utf-8" } else if path.ends_with(".js") { "text/javascript" } else if path.ends_with(".css") { "text/css" } else { "application/octet-stream" };
@@ -89,7 +129,7 @@ mod tests {
     use super::*;
     #[test]
     fn callback_requires_matching_state_and_provider_credential() {
-        let google = Credential { state: "expected".into(), id_token: Some("id".into()), access_token: None };
+        let google = Credential { state: "expected".into(), id_token: Some("id".into()), access_token: None, error: None };
         assert!(valid_credential(&google, "expected", "google"));
         assert!(!valid_credential(&google, "other", "google"));
         assert!(!valid_credential(&google, "expected", "github"));
@@ -97,7 +137,21 @@ mod tests {
     }
     #[test]
     fn nonce_is_not_returned_to_frontend() {
-        let value = Credential { state: "secret".into(), id_token: None, access_token: Some("token".into()) };
+        let value = Credential { state: "secret".into(), id_token: None, access_token: Some("token".into()), error: None };
         assert!(!serde_json::to_string(&value).unwrap().contains("secret"));
+    }
+    #[test]
+    fn browser_errors_require_state_and_are_normalized() {
+        let cancelled = Credential {
+            state: "expected".into(),
+            id_token: None,
+            access_token: None,
+            error: Some("auth/popup-closed-by-user".into()),
+        };
+        assert_eq!(browser_error(&cancelled, "expected"), Some("desktop-auth-cancelled"));
+        assert_eq!(browser_error(&cancelled, "other"), None);
+
+        let unknown = Credential { error: Some("unexpected-sensitive-detail".into()), ..cancelled };
+        assert_eq!(browser_error(&unknown, "expected"), Some("desktop-auth-provider-failed"));
     }
 }

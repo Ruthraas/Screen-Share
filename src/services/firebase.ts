@@ -119,6 +119,11 @@ export function authErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.startsWith("desktop-")) {
     if (error.message === "desktop-auth-timeout") return "o login expirou. tente novamente e conclua no navegador";
     if (error.message === "desktop-auth-busy") return "conclua a tentativa de login aberta no navegador";
+    if (error.message === "desktop-auth-cancelled") return "login cancelado";
+    if (error.message === "desktop-auth-network") return "falha de rede. confira sua conexao e tente novamente";
+    if (error.message === "desktop-auth-unauthorized-domain") return "autorize 127.0.0.1 nos dominios do firebase authentication";
+    if (error.message === "desktop-auth-provider-disabled") return "ative este provedor no firebase authentication";
+    if (error.message === "desktop-auth-provider-failed") return "o provedor recusou o login. confira a configuracao e tente novamente";
     return "nao foi possivel abrir o login no navegador. tente novamente";
   }
   return code ? `nao foi possivel entrar (${code})` : "nao foi possivel entrar. tente novamente";
