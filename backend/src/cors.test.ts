@@ -13,6 +13,7 @@ function build() {
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
     corsAllowedOrigins: [DEV_ORIGIN, TAURI_ORIGIN],
+    signalingPath: "/ws",
   });
 }
 
