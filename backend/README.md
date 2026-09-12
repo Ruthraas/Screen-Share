@@ -39,4 +39,11 @@ ambiente `HOST` e `PORT`.
 ## Encerramento
 
 O processo trata `SIGINT`/`SIGTERM`: fecha o Fastify (`app.close()`) antes
-de sair, para não deixar conexões pendentes.
+de sair, para não deixar conexões pendentes. `app.close()` em si é coberto
+pelos testes automatizados (fecha sem pendências a cada teste). A entrega
+de sinal ponta a ponta (`SIGINT`/`SIGTERM` → handler → `app.close()`) é
+padrão em Node.js e funciona como esperado em Linux/produção; **no Windows,
+o próprio Node não expõe esses sinais de forma confiável para o processo**
+(o SO encerra o processo diretamente em vez de emitir o evento), então esse
+caminho específico não pôde ser validado ponta a ponta neste ambiente de
+desenvolvimento — só o comportamento de `app.close()` em si.
