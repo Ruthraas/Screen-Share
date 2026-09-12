@@ -945,6 +945,24 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
+.command-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.command-search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.command-empty {
+  padding: 16px 14px;
+}
+
 .command-search svg {
   width: 15px;
   color: var(--text-secondary);
