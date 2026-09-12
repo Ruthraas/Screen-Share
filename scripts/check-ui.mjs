@@ -69,6 +69,10 @@ async function wave() {
     return { height: rect.height, width: rect.width, bottom: rect.bottom, windowWidth: innerWidth, windowHeight: innerHeight, pointerEvents: getComputedStyle(element).pointerEvents, patterns: element.querySelectorAll("pattern").length };
   });
   assert.equal(metrics.height, 28); assert.equal(metrics.width, metrics.windowWidth); assert.equal(metrics.bottom, metrics.windowHeight); assert.equal(metrics.patterns, 3); assert.equal(metrics.pointerEvents, "none");
+  // issue #21: nenhuma rota visitada por este script deve ter overflow na janela.
+  const overflow = await page.evaluate(() => ({ scrollW: document.documentElement.scrollWidth, innerW: innerWidth, scrollH: document.documentElement.scrollHeight, innerH: innerHeight }));
+  assert.ok(overflow.scrollW <= overflow.innerW, `overflow horizontal: scrollWidth ${overflow.scrollW} > innerWidth ${overflow.innerW}`);
+  assert.ok(overflow.scrollH <= overflow.innerH, `overflow vertical: scrollHeight ${overflow.scrollH} > innerHeight ${overflow.innerH}`);
 }
 try {
   await page.goto(`${BASE_URL}/#/login`);
@@ -109,7 +113,8 @@ try {
   await page.mouse.move(0, 0); await page.keyboard.press("Control+k");
   await page.getByRole("dialog", { name: "comandos" }).waitFor();
   await wave(); await snapshot("palette"); await page.keyboard.press("Escape");
-  for (const viewport of [{ width: 800, height: 460 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) { await page.setViewportSize(viewport); await wave(); }
+  // issue #21: as 3 resolucoes desktop suportadas, mais o tamanho minimo da janela (tauri.conf.json).
+  for (const viewport of [{ width: 800, height: 460 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) { await page.setViewportSize(viewport); await wave(); }
   await page.getByTitle("configuracoes", { exact: true }).click();
   await page.getByRole("button", { name: "sair da conta", exact: true }).click();
   await page.getByRole("button", { name: "entrar", exact: true }).waitFor();
