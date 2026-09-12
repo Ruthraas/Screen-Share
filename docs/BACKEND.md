@@ -100,6 +100,24 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   testes do plugin + os 2 do server ajustados), `npm run build` ok, e
   smoke test manual local (`/health` público 200, rota qualquer sem token
   401, com token válido segue pro roteamento normal).
+- **#31 — Schema e migrações de grupos e membros** (2026-09-12, branch
+  `feat/backend-groups-schema`): `backend/migrations/0001_groups_and_members.sql`
+  cria `groups` (id, name, owner_id, created_at) e `group_members` (chave
+  composta `group_id`+`user_id`, `role` restrito a
+  `owner`/`admin`/`member`, `ON DELETE CASCADE` do grupo pros membros),
+  com índices em `owner_id` e `user_id`. `src/db/migrate.ts` é um runner
+  simples (tabela `_migrations`, migrações são arquivos `.sql` com blocos
+  `-- up`/`-- down`) — idempotente, e `migrateDownOne` desfaz a última
+  aplicada. `src/db/connection.ts` abre o SQLite com
+  `foreign_keys = ON` (senão o cascade não funciona). Novo comando `npm run
+  migrate` (`src/db/migrateCli.ts`) usa a config de #29. Presença efêmera
+  **não** é persistida aqui (fica pra #36), como pede o escopo da issue.
+  Validado: `npm test` 21/21 (6 novos: sobe em banco vazio, idempotência em
+  banco populado, desce e remove as tabelas, chave composta rejeita membro
+  duplicado, cascade remove membros ao excluir o grupo, role fora do enum é
+  rejeitada); e `npm run migrate` rodado de verdade contra um arquivo
+  `.db` real — vazio (cria as tabelas) e depois populado com uma
+  linha real (rodar de novo não duplica nem apaga o dado).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
