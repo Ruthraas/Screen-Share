@@ -152,6 +152,22 @@ como query string (não fica em log de servidor/proxy). Erro do provedor
 próprio (`provider_error`). Endpoints confirmados nas docs oficiais em
 2026-09-12:
 
+**Dois destinos de redirect, escolhidos por `?target=` (2026-09-12,
+combinado com @Ruthraas):** existem `OAUTH_FRONTEND_REDIRECT_URL_BROWSER`
+(fallback de dev, `src/oauth.tsx`) e `OAUTH_FRONTEND_REDIRECT_URL_DESKTOP`
+(deep link `screenshare://` do app empacotado, `src-tauri/src/desktop_auth.rs`)
+configurados ao mesmo tempo — antes só existia um valor fixo, o que
+impedia testar os dois fluxos contra o mesmo backend. `/start` recebe
+`?target=browser|desktop` (o cliente já manda isso —
+`buildOAuthStartUrl`/`desktop_oauth_login`); o valor é validado contra essa
+allowlist (qualquer coisa fora disso, incluindo ausência, vira "browser")
+e embutido dentro do `state` assinado, porque é o único dado que sobrevive
+à ida-e-volta pelo provedor (o `/callback` não recebe `target` de volta,
+só o que o provedor ecoa). O `/callback` lê o `target` do `state` (mesmo
+em caminhos de erro, antes até de validar o resto do pedido) pra saber
+pra onde mandar o resultado — sem isso, um erro no fluxo desktop voltaria
+por padrão pro navegador dev, quebrando o app empacotado.
+
 | Provedor | Autorização | Troca de código | Perfil |
 |---|---|---|---|
 | Google | `accounts.google.com/o/oauth2/v2/auth` | `oauth2.googleapis.com/token` (POST form-urlencoded) | `openidconnect.googleapis.com/v1/userinfo` |

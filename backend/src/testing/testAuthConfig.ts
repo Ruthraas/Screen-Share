@@ -6,7 +6,10 @@ export function testAuthConfig(overrides: Partial<AppConfig["auth"]> = {}): AppC
     sessionSigningSecret: "a".repeat(32),
     passwordPepper: "b".repeat(16),
     oauthRedirectBaseUrl: "http://127.0.0.1:8787",
-    oauthFrontendRedirectUrl: "http://127.0.0.1:5173/oauth.html",
+    oauthFrontendRedirectUrls: {
+      browser: "http://127.0.0.1:5173/oauth.html",
+      desktop: "screenshare://oauth-callback",
+    },
     oauthProviders: {},
     ...overrides,
   };

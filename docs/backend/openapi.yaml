@@ -143,6 +143,15 @@ paths:
         in: path
         required: true
         schema: { type: string, enum: [google, github, discord] }
+      - name: target
+        in: query
+        schema: { type: string, enum: [browser, desktop], default: browser }
+        description: >
+          Pra onde o callback deve redirecionar ao final: a página de
+          fallback do navegador (dev) ou o deep link do app desktop
+          empacotado. Ausente ou fora do allowlist cai em "browser". Viaja
+          embutido no `state` assinado (não é preciso reenviar no
+          callback).
     get:
       tags: [auth]
       summary: Inicia o login OAuth — redireciona pro provedor
@@ -181,7 +190,9 @@ paths:
       responses:
         "302":
           description: >
-            Redireciona pra OAUTH_FRONTEND_REDIRECT_URL com o resultado num
+            Redireciona pro destino escolhido em `/start` via `?target=`
+            (OAUTH_FRONTEND_REDIRECT_URL_BROWSER ou _DESKTOP; "browser" por
+            padrão se o `state` não puder ser lido) com o resultado num
             fragmento da URL (nunca query string, pra não ficar em log):
             sucesso vira `#access_token=...&refresh_token=...&provider=...`;
             falha vira `#error=<código>` (`invalid_state`, `missing_code`,

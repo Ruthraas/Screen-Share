@@ -222,6 +222,60 @@ test("fluxo OAuth completo: start -> callback cria/loga usuário e devolve sess�
   }
 });
 
+test("oauth start com target=desktop embute o target no state; callback redireciona pro deep link desktop", async () => {
+  const app = build();
+  try {
+    const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start?target=desktop" });
+    const state = new URL(start.headers.location as string).searchParams.get("state")!;
+
+    const callback = await app.inject({ method: "GET", url: `/v1/auth/oauth/google/callback?code=code-1&state=${encodeURIComponent(state)}` });
+    assert.equal(callback.statusCode, 302);
+    const location = callback.headers.location as string;
+    assert.ok(location.startsWith("screenshare://oauth-callback"), `esperava deep link desktop, veio: ${location}`);
+    assert.ok(hashParams(location).get("access_token"));
+  } finally {
+    await app.close();
+  }
+});
+
+test("oauth start sem target (ou com target inválido) mantém o navegador como destino, igual ao comportamento de antes", async () => {
+  const app = build();
+  try {
+    const semTarget = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
+    const stateSemTarget = new URL(semTarget.headers.location as string).searchParams.get("state")!;
+    const callbackSemTarget = await app.inject({
+      method: "GET",
+      url: `/v1/auth/oauth/google/callback?code=code-1&state=${encodeURIComponent(stateSemTarget)}`,
+    });
+    assert.ok((callbackSemTarget.headers.location as string).startsWith("http://127.0.0.1:5173/oauth.html"));
+
+    const targetInvalido = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start?target=celular" });
+    const stateInvalido = new URL(targetInvalido.headers.location as string).searchParams.get("state")!;
+    const callbackInvalido = await app.inject({
+      method: "GET",
+      url: `/v1/auth/oauth/google/callback?code=code-1&state=${encodeURIComponent(stateInvalido)}`,
+    });
+    assert.ok((callbackInvalido.headers.location as string).startsWith("http://127.0.0.1:5173/oauth.html"));
+  } finally {
+    await app.close();
+  }
+});
+
+test("erro no fluxo desktop (ex.: missing_code) ainda volta pro deep link desktop, não pro navegador", async () => {
+  const app = build();
+  try {
+    const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start?target=desktop" });
+    const state = new URL(start.headers.location as string).searchParams.get("state")!;
+
+    const response = await app.inject({ method: "GET", url: `/v1/auth/oauth/google/callback?state=${encodeURIComponent(state)}` });
+    const location = response.headers.location as string;
+    assert.ok(location.startsWith("screenshare://oauth-callback"), `esperava deep link desktop, veio: ${location}`);
+    assert.equal(hashParams(location).get("error"), "missing_code");
+  } finally {
+    await app.close();
+  }
+});
+
 test("callback com state adulterado/inválido redireciona com error=invalid_state", async () => {
   const app = build();
   try {

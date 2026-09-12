@@ -23,11 +23,16 @@ const envSchema = z.object({
   // Base pública do próprio backend, usada pra montar o redirect_uri
   // enviado a cada provedor OAuth (precisa bater com o cadastrado lá).
   OAUTH_REDIRECT_BASE_URL: z.string().min(1, "OAUTH_REDIRECT_BASE_URL é obrigatória"),
-  // Pra onde o navegador volta depois do fluxo OAuth terminar (sucesso ou
-  // erro) — o frontend lê o resultado num fragmento da URL. Tem default
-  // porque é uma origem já conhecida deste projeto (dev server do Vite),
-  // igual ao CORS_ALLOWED_ORIGINS.
-  OAUTH_FRONTEND_REDIRECT_URL: z.string().min(1).default("http://127.0.0.1:5173/oauth.html"),
+  // Pra onde o cliente volta depois do fluxo OAuth terminar (sucesso ou
+  // erro) — existem DOIS destinos possíveis, escolhidos pelo `?target=`
+  // recebido em `/start` (issue combinada com o Ruthraas, que já manda esse
+  // parâmetro do lado do `desktop_auth.rs`/`authClient.ts`): a página de
+  // fallback do navegador em dev, ou o deep link `screenshare://` do app
+  // empacotado. Ambos têm default porque são origens já conhecidas deste
+  // projeto (dev server do Vite / esquema registrado em
+  // `src-tauri/tauri.conf.json`), igual ao CORS_ALLOWED_ORIGINS.
+  OAUTH_FRONTEND_REDIRECT_URL_BROWSER: z.string().min(1).default("http://127.0.0.1:5173/oauth.html"),
+  OAUTH_FRONTEND_REDIRECT_URL_DESKTOP: z.string().min(1).default("screenshare://oauth-callback"),
 
   // Credenciais por provedor — opcionais de propósito: as reais ainda não
   // existem (dependem de cadastro nas consoles de cada plataforma), e o
@@ -73,7 +78,7 @@ export interface AppConfig {
     sessionSigningSecret: string;
     passwordPepper: string;
     oauthRedirectBaseUrl: string;
-    oauthFrontendRedirectUrl: string;
+    oauthFrontendRedirectUrls: { browser: string; desktop: string };
     oauthProviders: Partial<Record<OAuthProviderName, OAuthProviderCredentials>>;
   };
   signaling: {
@@ -132,7 +137,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       sessionSigningSecret: parsed.SESSION_SIGNING_SECRET,
       passwordPepper: parsed.PASSWORD_PEPPER,
       oauthRedirectBaseUrl: parsed.OAUTH_REDIRECT_BASE_URL,
-      oauthFrontendRedirectUrl: parsed.OAUTH_FRONTEND_REDIRECT_URL,
+      oauthFrontendRedirectUrls: {
+        browser: parsed.OAUTH_FRONTEND_REDIRECT_URL_BROWSER,
+        desktop: parsed.OAUTH_FRONTEND_REDIRECT_URL_DESKTOP,
+      },
       oauthProviders: buildOAuthProviders(parsed),
     },
     signaling: {
@@ -164,7 +172,7 @@ export function toPublicSummary(config: AppConfig): Record<string, unknown> {
       sessionSigningSecret: REDACTED,
       passwordPepper: REDACTED,
       oauthRedirectBaseUrl: config.auth.oauthRedirectBaseUrl,
-      oauthFrontendRedirectUrl: config.auth.oauthFrontendRedirectUrl,
+      oauthFrontendRedirectUrls: config.auth.oauthFrontendRedirectUrls,
       oauthProvidersConfigured: Object.keys(config.auth.oauthProviders),
     },
     signaling: { path: config.signaling.path },
