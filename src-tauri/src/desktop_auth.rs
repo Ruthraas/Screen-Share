@@ -74,7 +74,11 @@ fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
     let (tx, rx) = mpsc::channel::<String>();
     *pending().lock().unwrap() = Some(tx);
 
-    let start_url = format!("{}/v1/auth/oauth/{provider}/start", api_url.trim_end_matches('/'));
+    // `target=desktop`: preparado pro backend poder escolher entre mais de
+    // um OAUTH_FRONTEND_REDIRECT_URL configurado (hoje só existe um por vez,
+    // combinado com @ProgVictorPe — o backend ainda ignora esse parâmetro,
+    // então mandar já não quebra nada).
+    let start_url = format!("{}/v1/auth/oauth/{provider}/start?target=desktop", api_url.trim_end_matches('/'));
     if open::that(start_url).is_err() {
         *pending().lock().unwrap() = None;
         return Err("desktop-browser-failed".into());
