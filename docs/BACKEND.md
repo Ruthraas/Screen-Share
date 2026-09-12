@@ -194,6 +194,55 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   origem desconhecida, requisição sem `Origin` não é afetada); smoke test
   manual real via `curl -X OPTIONS` contra o processo confirmando os
   mesmos comportamentos fora do ambiente de teste.
+- **#38, #36, #37, #39 — protocolo de sinalização, presença e WebSocket com
+  autorização** (2026-09-12, branch `feat/backend-signaling-presence`, um
+  PR só pra essa etapa):
+  - **#38** `src/signaling/protocol.ts` — envelope versionado (`v: 1`,
+    `correlationId`) com schema `zod` por tipo de evento
+    (`offer`/`answer`/`ice-candidate` exigem `to`; `stream-started`/
+    `stream-stopped` não); nenhum evento de áudio existe no protocolo.
+  - **#37** `src/signaling/room.ts` (salas em memória, uma conexão por
+    usuário por grupo) + `src/signaling/plugin.ts` (`@fastify/websocket`,
+    rota em `config.signaling.path`, hoje `/ws`). Autenticação via
+    `?token=...&groupId=...` na query string — **não** via header
+    `Authorization`, porque o WebSocket do navegador não manda esse header
+    no handshake; por isso o caminho de signaling entra em `publicPaths`
+    do plugin de auth HTTP e faz sua própria verificação com o mesmo
+    `TokenVerifier` de #30.
+  - **#39** revalida membership a cada mensagem recebida (não só na
+    conexão) — se o usuário deixar de ser membro no meio da sessão, a
+    próxima mensagem fecha a conexão com 4403. `from` de todo evento vem
+    da identidade autenticada da conexão, nunca de campo enviado pelo
+    cliente. `SDP`/`ICE` nunca aparecem em texto puro no log
+    (`SENSITIVE_EVENT_TYPES`).
+  - **#36** `src/presence/store.ts` — heartbeat + TTL (30s padrão), só em
+    memória (nunca persistido, como já exigia #31/#36). Exposto via HTTP
+    (`POST .../presence/heartbeat`, `GET .../presence`), não WebSocket.
+  - **Bug real encontrado e corrigido durante esta etapa**: o plugin de
+    auth (#30) comparava `publicPaths` contra `request.url` **sem
+    remover a query string** — `/ws?token=...` nunca batia com `/ws`
+    cadastrado em `publicPaths`, então a conexão de signaling levava 401
+    antes de chegar no próprio código de auth do WebSocket. Corrigido
+    comparando só o pathname; teste de regressão adicionado em
+    `src/auth/plugin.test.ts`.
+  - **Achado de teste (não é bug de produção)**: `@fastify/websocket`'s
+    `injectWS()` (usado nos testes de #30/#37 anteriores) tem uma
+    peculiaridade onde uma mensagem enviada no mesmo tick da conexão
+    nunca chega ao cliente injetado — reproduzido isoladamente e
+    confirmado que **não** acontece com um socket TCP real
+    (`app.listen()` + cliente `ws` de verdade). Os testes de signaling
+    usam `app.listen({port:0})` + cliente `ws` real por isso.
+  - Validado: `npm test` 71/71 depois de reconciliar com o #59/CORS (rebase
+    trouxe conflito real em `server.ts`/`index.ts`/testes — resolvido
+    mantendo os dois: CORS registrado, depois auth, depois as rotas; um
+    ajuste também precisou entrar em `cors.test.ts`, que não passava
+    `signalingPath` pro `buildServer()` novo). 18 testes novos desta etapa:
+    protocolo — 9, presença —
+    9, incluindo TTL/expiração/limpeza —, signaling — 8 com sockets reais
+    cobrindo conexão válida, token inválido→4401, fora do grupo→4403,
+    roteamento ponto-a-ponto com `from` do servidor, broadcast, mensagem
+    inválida, `peer-left` ao desconectar, e SDP não vaza no log). `npm run
+    build` ok.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
