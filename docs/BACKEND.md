@@ -118,6 +118,38 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   rejeitada); e `npm run migrate` rodado de verdade contra um arquivo
   `.db` real — vazio (cria as tabelas) e depois populado com uma
   linha real (rodar de novo não duplica nem apaga o dado).
+- **#35, #32, #33, #34 — API de grupos, autorização por papel e convites**
+  (2026-09-12, branch `feat/backend-groups-api`, um PR só para as 4 issues
+  por formarem uma etapa coerente): `src/authz/policy.ts` centraliza a
+  matriz de permissões (owner/admin/member — ver comentário no arquivo) e é
+  a única fonte de verdade de autorização, usada por toda rota; grupo
+  inexistente e "não sou membro" respondem os dois `404` (nunca revelam
+  a um não-membro que o grupo existe). `src/groups/repository.ts`
+  implementa toda a persistência (criar/listar/detalhar/renomear/excluir
+  grupo, saír, criar/listar/revogar/aceitar convite) em cima do schema de
+  #31 + nova migração `0002_invites.sql`. `src/routes/groups.ts` expõe
+  exatamente os endpoints do contrato (#27): `POST/GET /v1/groups`,
+  `GET/PATCH/DELETE /v1/groups/:id`, `POST /v1/groups/:id/leave`,
+  `POST/GET /v1/groups/:id/invites`, `DELETE /v1/groups/:id/invites/:id`,
+  `POST /v1/invites/:token/accept`. `server.ts` ganhou um
+  `setErrorHandler` central que traduz os erros de domínio
+  (`NotFoundError`→404, `ForbiddenError`→403, `ConflictError`→409,
+  `ValidationError`→422) pro envelope de erro único — nenhum handler
+  monta resposta de erro na mão. `index.ts` agora abre o banco e roda
+  `migrateUp` automaticamente no boot (antes só existia `npm run
+  migrate` manual; a partir daqui o servidor de fato usa o banco, então
+  faz sentido migrar sozinho ao subir). Regras de negócio implementadas:
+  dono não sai do grupo sem transferir/excluir (409); só dono exclui;
+  só owner/admin cria ou revoga convite; aceitar convite é idempotente
+  para quem já é membro e rejeita (409) quando expirado, revogado ou
+  esgotado (`maxUses`). Validado: `npm test` 36/36 (14 testes novos de
+  rotas cobrindo toda a matriz owner/admin/member/outsider + casos de
+  convite, e 4 testes de policy isolados); `npm run build` ok; smoke test
+  manual real via `curl` contra o processo (`/health` público 200,
+  `/v1/groups` sem token 401, log confirma `migrationsApplied` no boot).
+  Verificação de token do Firebase de verdade contra um convite real não
+  foi possível sem projeto Firebase disponível — comportamento cobre
+  pelos testes com verificador falso, igual nas issues anteriores.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -171,12 +203,14 @@ de nada vem primeiro; grupos entre `---` podem andar em paralelo):
 
 _(o que o front precisa implementar/expor, ou o que o backend precisa que o front decida, para os dois lados se conversarem — atualizar a cada entrega)_
 
-Contrato HTTP inicial fechado em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27, ainda sem implementação — próximo passo é #28). Pontos que o frontend precisa saber desde já:
+Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Grupos e convites já estão implementados e testados** (presença/heartbeat ainda não — isso é #36) — dá pra integrar de verdade contra `/v1/groups` e `/v1/invites`, não é mais só o papel. Pontos que o frontend precisa saber desde já:
 
 - **Base URL/versionamento**: todas as rotas HTTP terão prefixo `/v1/...`; mudança incompatível vira `/v2/...`, `/v1` nunca muda de forma retroativa.
-- **Autenticação**: `Authorization: Bearer <idToken do Firebase Auth>` em toda requisição — o mesmo token que `src/services/firebase.ts` já obtém no login. Verificação real do token é #30 (ainda não implementada); o formato do header já está fixado.
-- **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI.
-- **Grupos/convites/presença/TURN**: endpoints e payloads completos, com exemplos, em `openapi.yaml` — `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave`, `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept`, `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`, `POST /v1/turn-credentials`.
+- **Autenticação**: `Authorization: Bearer <idToken do Firebase Auth>` em toda requisição — o mesmo token que `src/services/firebase.ts` já obtém no login. Verificação real do token (#30) está implementada; sem header ou token invalido/expirado sempre dá `401`.
+- **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI. Códigos em uso: `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation_error` (422).
+- **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
+- **Grupos e convites — implementados** (`src/routes/groups.ts`, testados): `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave` (dono recebe `409` se tentar saír sem transferir/excluir antes), `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept` (idempotente pra quem já é membro; `409` se expirado/revogado/esgotado). `PATCH`/criar-revogar-convite exigem papel `owner` ou `admin`; excluir grupo exige `owner`.
+- **Presença/TURN — ainda não implementados** (payloads já definidos em `openapi.yaml`, aguardando #36/#40/#41): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`, `POST /v1/turn-credentials`.
 - **WebSocket**: cliente troca offer/answer/ICE por um protocolo versionado com `correlationId` (#38, ainda a escrever) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend).
 - **TURN**: cliente precisa pedir credenciais temporárias ao backend (#41) antes de abrir conexão — nunca usar segredo estático.
 - **Updater**: `#48` (frontend, exibir/instalar atualização) consome o manifesto gerado por `#49` (backend/infra) — URLs HTTPS da própria release, arquitetura x64.
