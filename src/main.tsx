@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CreateGroupModal } from "./components/groups/CreateGroupModal";
 import { AppShell } from "./components/layout/AppShell";
@@ -13,20 +13,22 @@ import "./styles.css";
 import { CommandPalette } from "./components/layout/CommandPalette";
 import { AccountProvider, useAccount, useSession } from "./components/layout/AccountProvider";
 import type { Route } from "./data/types";
+import { parseRouteHash, routeAfterLogin, routeForSignedOut, sessionView } from "./services/sessionRouting";
 
 function routeFromHash(): Route {
-  const value = window.location.hash.replace("#/", "") as Route;
-  return value || "login";
+  return parseRouteHash(window.location.hash);
 }
 
 function App() {
   const session = useSession();
-  if (!session.ready) return <div className="app-frame"><SplashScreen leaving={false} /></div>;
-  if (!session.user) return <AuthenticatedApp signedIn={false} />;
+  const view = sessionView(session);
+  if (view === "loading") return <div className="app-frame"><SplashScreen leaving={false} /></div>;
+  if (view === "login") return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
+  if (!session.user) return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
   return <AccountProvider key={session.user.uid} account={session.user}><AuthenticatedApp signedIn /></AccountProvider>;
 }
 
-function AuthenticatedApp({ signedIn }: { signedIn: boolean }) {
+function AuthenticatedApp({ signedIn, sessionError }: { signedIn: boolean; sessionError?: string }) {
   const [route, setRoute] = useState<Route>(routeFromHash());
   const [createOpen, setCreateOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -58,15 +60,22 @@ function AuthenticatedApp({ signedIn }: { signedIn: boolean }) {
     };
   }, []);
 
-  const navigate = (next: Route) => {
+  const navigate = useCallback((next: Route) => {
     setRoute(next);
     window.history.replaceState(null, "", `#/${next}`);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!signedIn) {
+      const publicRoute = routeForSignedOut(route);
+      if (route !== publicRoute) navigate(publicRoute);
+    }
+  }, [navigate, route, signedIn]);
 
   if (!signedIn) {
     return (
       <AppFrame ready={!showSplash}>
-        <Login navigate={() => navigate("home")} />
+        <Login sessionError={sessionError} />
         {showSplash ? <SplashScreen leaving={splashLeaving} /> : null}
       </AppFrame>
     );
@@ -81,18 +90,23 @@ function AuthenticatedApp({ signedIn }: { signedIn: boolean }) {
 }
 
 function Workspace({ route, navigate, createOpen, setCreateOpen, paletteOpen, setPaletteOpen }: { route: Route; navigate: (route: Route) => void; createOpen: boolean; setCreateOpen: (value: boolean) => void; paletteOpen: boolean; setPaletteOpen: (value: boolean) => void }) {
-  const { selected } = useAccount();
+  const { groups, selected } = useAccount();
+  const effectiveRoute = routeAfterLogin(route, { groups, selectedId: selected?.id ?? null });
+  useEffect(() => {
+    if (effectiveRoute !== route) navigate(effectiveRoute);
+  }, [effectiveRoute, navigate, route]);
+
   return (
     <AppShell
-      route={route}
+      route={effectiveRoute}
       navigate={navigate}
-      title={["home", "share", "multi"].includes(route) ? selected?.name : undefined}
+      title={["home", "share", "multi"].includes(effectiveRoute) ? selected?.name : undefined}
     >
-      {route === "home" || route === "share" ? selected ? <Share navigate={navigate} /> : <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("multi")} /> : null}
-      {route === "multi" ? <Groups onCreate={() => setCreateOpen(true)} /> : null}
-      {route === "settings" ? <Settings onEditProfile={() => navigate("profile")} /> : null}
-      {route === "profile" ? <Profile /> : null}
-      {route === "empty" ? <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("home")} /> : null}
+      {effectiveRoute === "home" || effectiveRoute === "share" ? selected ? <Share navigate={navigate} /> : <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("multi")} /> : null}
+      {effectiveRoute === "multi" ? <Groups onCreate={() => setCreateOpen(true)} /> : null}
+      {effectiveRoute === "settings" ? <Settings onEditProfile={() => navigate("profile")} /> : null}
+      {effectiveRoute === "profile" ? <Profile /> : null}
+      {effectiveRoute === "empty" ? <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("home")} /> : null}
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); navigate("share"); }} />
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onAction={action => { setPaletteOpen(false); if (action === "create") setCreateOpen(true); else navigate(action as Route); }} /> : null}
     </AppShell>

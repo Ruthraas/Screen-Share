@@ -20,7 +20,7 @@ interface Star {
   twinkleSpeed: number;
 }
 
-export function Login({ navigate }: { navigate: () => void }) {
+export function Login({ sessionError }: { sessionError?: string }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,6 +50,10 @@ export function Login({ navigate }: { navigate: () => void }) {
     setTimeout(() => setFormVisible(true), 200);
   }, [mode]);
 
+  useEffect(() => {
+    if (sessionError) setStatus(authErrorMessage(Object.assign(new Error(sessionError), { code: sessionError })));
+  }, [sessionError]);
+
   const isSignup = mode === "signup";
   const command = isSignup ? "signup" : "login";
 
@@ -70,7 +74,6 @@ export function Login({ navigate }: { navigate: () => void }) {
         await loginWithEmail(email, password);
       }
 
-      navigate();
     } catch (error) {
       setStatus(authErrorMessage(error));
     } finally {
@@ -90,7 +93,6 @@ export function Login({ navigate }: { navigate: () => void }) {
         await loginWithGithub();
       }
 
-      navigate();
     } catch (error) {
       setStatus(authErrorMessage(error));
     } finally {
