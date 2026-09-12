@@ -5,8 +5,7 @@ import { useAccount } from "./AccountProvider";
 import { Avatar } from "../ui/Avatar";
 import { BrandMark, IconHome, IconSettings, IconUsers, IconLogout, IconUser } from "../ui/Icons";
 import { PixelWave } from "./PixelWave";
-
-type Route = "login" | "empty" | "home" | "share" | "multi" | "settings" | "profile";
+import type { Route } from "../../data/types";
 
 export function AppShell({
   route,
