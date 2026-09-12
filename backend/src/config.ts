@@ -25,6 +25,15 @@ const envSchema = z
     // curta duração; nunca tem valor padrão.
     TURN_HOST: z.string().min(1, "TURN_HOST é obrigatória"),
     TURN_SECRET: z.string().min(1, "TURN_SECRET é obrigatória"),
+
+    // CORS (issue #59) — lista separada por vírgula. Padrão são as origens
+    // reais deste projeto: o dev server do Vite (vite.config.ts: host
+    // 127.0.0.1, porta 5173, igual ao "devUrl" do src-tauri/tauri.conf.json)
+    // e a origem do WebView do Tauri 2 empacotado no Windows
+    // (https://tauri.localhost — único alvo de bundle hoje é "nsis"). Não é
+    // segredo; existe como config só porque pode mudar sem alterar código
+    // (ex.: suportar mais uma plataforma de bundle no futuro).
+    CORS_ALLOWED_ORIGINS: z.string().min(1).default("http://127.0.0.1:5173,https://tauri.localhost"),
   })
   .refine(
     (env) => Boolean(env.FIREBASE_SERVICE_ACCOUNT_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON),
@@ -51,6 +60,9 @@ export interface AppConfig {
   turn: {
     host: string;
     secret: string;
+  };
+  cors: {
+    allowedOrigins: string[];
   };
 }
 
@@ -91,6 +103,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       host: parsed.TURN_HOST,
       secret: parsed.TURN_SECRET,
     },
+    cors: {
+      allowedOrigins: parsed.CORS_ALLOWED_ORIGINS.split(",")
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    },
   };
 }
 
@@ -113,5 +130,6 @@ export function toPublicSummary(config: AppConfig): Record<string, unknown> {
       host: config.turn.host,
       secret: REDACTED,
     },
+    cors: { allowedOrigins: config.cors.allowedOrigins },
   };
 }

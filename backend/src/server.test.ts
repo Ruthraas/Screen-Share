@@ -5,7 +5,11 @@ import { FakeTokenVerifier } from "./testing/fakeTokenVerifier.js";
 import { createTestDb } from "./testing/testDb.js";
 
 function build() {
-  return buildServer({ verifier: new FakeTokenVerifier(), db: createTestDb() });
+  return buildServer({
+    verifier: new FakeTokenVerifier(),
+    db: createTestDb(),
+    corsAllowedOrigins: ["http://127.0.0.1:5173"],
+  });
 }
 
 test("GET /health responde 200 com status ok (sem token)", async () => {
