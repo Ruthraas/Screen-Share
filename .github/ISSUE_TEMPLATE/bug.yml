@@ -1,0 +1,49 @@
+name: Bug
+description: Relate um comportamento incorreto ou regressão
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Explique o que aconteceu e o comportamento esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Como reproduzir
+      description: Liste os passos mínimos, a rota e o estado da aplicação.
+      placeholder: |
+        1. Abra...
+        2. Clique...
+        3. Observe...
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Ambiente
+      options:
+        - Aplicativo Windows (Tauri)
+        - Navegador com Vite
+        - Build ou instalador
+        - Outro
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão ou commit
+      placeholder: v0.1.0 ou SHA do commit
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências
+      description: Inclua logs sem segredos e, quando útil, capturas ou vídeo.
+  - type: textarea
+    id: checks
+    attributes:
+      label: Verificações adicionais
+      description: Informe se o problema ocorre em outro ambiente e se há workaround.
