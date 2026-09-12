@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Button } from "../components/ui/Button";
 import { IconChevronRight, IconEye, IconEyeOff } from "../components/ui/Icons";
 import {
+  AuthError,
   authErrorMessage,
-  createAccountWithEmail,
   loginWithEmail,
-  loginWithGithub,
-  loginWithGoogle,
-} from "../services/firebase";
+  loginWithOAuth,
+  registerWithEmail,
+  type OAuthProvider,
+} from "../services/authClient";
 
 export function Login({ sessionError }: { sessionError?: string }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -26,7 +27,7 @@ export function Login({ sessionError }: { sessionError?: string }) {
   }, [mode]);
 
   useEffect(() => {
-    if (sessionError) setStatus(authErrorMessage(Object.assign(new Error(sessionError), { code: sessionError })));
+    if (sessionError) setStatus(authErrorMessage(new AuthError(sessionError)));
   }, [sessionError]);
 
   const isSignup = mode === "signup";
@@ -44,7 +45,7 @@ export function Login({ sessionError }: { sessionError?: string }) {
 
     try {
       if (isSignup) {
-        await createAccountWithEmail(name, email, password);
+        await registerWithEmail(name, email, password);
       } else {
         await loginWithEmail(email, password);
       }
@@ -56,18 +57,13 @@ export function Login({ sessionError }: { sessionError?: string }) {
     }
   }
 
-  async function submitProvider(provider: "google" | "github") {
+  async function submitProvider(provider: OAuthProvider) {
     setStatus("");
     setStatus("continue o login na janela do navegador");
     setLoading(true);
 
     try {
-      if (provider === "google") {
-        await loginWithGoogle();
-      } else {
-        await loginWithGithub();
-      }
-
+      await loginWithOAuth(provider);
     } catch (error) {
       setStatus(authErrorMessage(error));
     } finally {
@@ -170,6 +166,9 @@ export function Login({ sessionError }: { sessionError?: string }) {
             </button>
             <button className="oauth-button" onClick={() => submitProvider("github")} type="button" disabled={loading}>
               <span>[github]</span>
+            </button>
+            <button className="oauth-button" onClick={() => submitProvider("discord")} type="button" disabled={loading}>
+              <span>[discord]</span>
             </button>
           </div>
           {status ? <p className="auth-status" role="alert" style={{ opacity: formVisible ? 1 : 0, transition: 'opacity 300ms ease-out 800ms' }}>{status}</p> : null}

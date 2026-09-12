@@ -10,7 +10,7 @@ export function readAccount(uid: string): AccountData {
     const raw = localStorage.getItem(key(uid));
     if (!raw) return emptyAccountData();
     const data = JSON.parse(raw) as AccountData;
-    if (!Array.isArray(data.groups) || !data.groups.every(group => typeof group.id === "string" && typeof group.name === "string") || typeof data.profile?.bio !== "string" || !["dark", "light"].includes(data.preferences?.theme) || typeof data.preferences?.notifications !== "boolean") return emptyAccountData();
+    if (!Array.isArray(data.groups) || !data.groups.every(group => typeof group.id === "string" && typeof group.name === "string") || typeof data.profile?.bio !== "string" || (data.profile.name !== undefined && typeof data.profile.name !== "string") || !["dark", "light"].includes(data.preferences?.theme) || typeof data.preferences?.notifications !== "boolean") return emptyAccountData();
     return data;
   } catch { return emptyAccountData(); }
 }
