@@ -1,0 +1,94 @@
+name: Frontend CI
+
+# Issue #5: torna verificável o build React/TypeScript/Rust e o empacotamento
+# Windows, com um smoke test cobrindo login, shell, configurações e logout
+# contra uma fixture local (issue #30: as rotas /v1/auth/* são interceptadas
+# em scripts/check-ui.mjs — nenhuma credencial ou backend real é usado, então
+# uma falha aqui nunca expõe token nem conteúdo de .env.local).
+#
+# Só Windows por agora, mesmo critério do backend-ci.yml: é o ambiente de
+# desenvolvimento real (Ruthraas) e o único validado até aqui.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/**"
+      - "tests/frontend/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "oauth.html"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/**"
+      - "tests/frontend/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "oauth.html"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes unitários (Node --test)
+        run: npm run test:frontend
+
+      - name: Build (tsc + vite)
+        run: npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Testes Rust da ponte desktop
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Instalar navegador do Playwright
+        run: npx playwright install chromium
+
+      - name: Smoke test (login, shell, configurações, logout — fixture local)
+        run: npm run test:e2e
+
+      - name: Empacotar Windows (ScreenShare.exe + instalador NSIS)
+        run: npm run tauri:build
+
+      - name: Publicar artefatos do bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshare-windows
+          path: |
+            src-tauri/target/release/ScreenShare.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publicar capturas do smoke test (diagnóstico em caso de falha)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-screenshots
+          path: artifacts/ui/
+          if-no-files-found: ignore
+          retention-days: 14
