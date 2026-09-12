@@ -1,4 +1,4 @@
-export { IconHome, IconUsers, IconSettings, IconScreenShare as IconShare, IconPlus, IconSearch, IconCopy, IconLogout, IconDots, IconChevronRight, IconEye, IconMinimize, IconUser, IconLock, IconMail, IconEyeOff } from "@tabler/icons-react";
+export { IconHome, IconUsers, IconSettings, IconScreenShare as IconShare, IconPlus, IconSearch, IconLogout, IconChevronRight, IconEye, IconMinimize, IconUser, IconEyeOff } from "@tabler/icons-react";
 
 export function BrandMark({ small = false }: { small?: boolean }) {
   return (
