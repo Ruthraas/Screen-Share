@@ -16,8 +16,24 @@ const loginSchema = z.object({ email: z.string().email(), password: z.string().m
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 const logoutSchema = z.object({ refreshToken: z.string().min(1) });
 
+/**
+ * Pra onde o resultado do OAuth volta: navegador (fallback de dev,
+ * `src/oauth.tsx`) ou app desktop empacotado (deep link `screenshare://`,
+ * `src-tauri/src/desktop_auth.rs`). Combinado com o Ruthraas — o cliente já
+ * manda `?target=` em `/start` (`buildOAuthStartUrl`/`desktop_oauth_login`);
+ * viaja dentro do `state` assinado (não como query no `/callback`, que só
+ * recebe de volta o que o provedor ecoa) pra sobreviver à ida-e-volta pelo
+ * provedor.
+ */
+type OAuthTarget = "browser" | "desktop";
+
+function isOAuthTarget(value: unknown): value is OAuthTarget {
+  return value === "browser" || value === "desktop";
+}
+
 interface OAuthStatePayload {
   provider: OAuthProviderName;
+  target: OAuthTarget;
   nonce: string;
   exp: number;
 }
@@ -98,37 +114,61 @@ export function registerAuthRoutes(
     reply.code(204);
   });
 
-  app.get<{ Params: { provider: string } }>("/v1/auth/oauth/:provider/start", async (request, reply) => {
-    const providerParam = request.params.provider;
-    if (!isOAuthProviderName(providerParam)) {
-      throw new NotFoundError(`Provedor OAuth "${providerParam}" não existe.`);
-    }
-    const provider = providers[providerParam];
-    const credentials = authConfig.oauthProviders[providerParam];
-    if (!credentials) {
-      throw new NotFoundError(`Provedor OAuth "${providerParam}" ainda não tem credenciais configuradas.`);
-    }
+  app.get<{ Params: { provider: string }; Querystring: { target?: string } }>(
+    "/v1/auth/oauth/:provider/start",
+    async (request, reply) => {
+      const providerParam = request.params.provider;
+      if (!isOAuthProviderName(providerParam)) {
+        throw new NotFoundError(`Provedor OAuth "${providerParam}" não existe.`);
+      }
+      const provider = providers[providerParam];
+      const credentials = authConfig.oauthProviders[providerParam];
+      if (!credentials) {
+        throw new NotFoundError(`Provedor OAuth "${providerParam}" ainda não tem credenciais configuradas.`);
+      }
 
-    const statePayload: OAuthStatePayload = {
-      provider: providerParam,
-      nonce: newRefreshTokenValue(),
-      exp: Date.now() + OAUTH_STATE_TTL_MS,
-    };
-    const state = signPayload(statePayload, authConfig.sessionSigningSecret);
-    const redirectUri = `${authConfig.oauthRedirectBaseUrl}/v1/auth/oauth/${providerParam}/callback`;
+      // `target` é opcional/allowlisted — qualquer valor fora de
+      // browser/desktop (ausente incluído) cai no navegador, o
+      // comportamento de sempre antes desta mudança.
+      const target: OAuthTarget = isOAuthTarget(request.query.target) ? request.query.target : "browser";
 
-    reply.redirect(provider.authorizeUrl({ clientId: credentials.clientId, redirectUri, state }), 302);
-  });
+      const statePayload: OAuthStatePayload = {
+        provider: providerParam,
+        target,
+        nonce: newRefreshTokenValue(),
+        exp: Date.now() + OAUTH_STATE_TTL_MS,
+      };
+      const state = signPayload(statePayload, authConfig.sessionSigningSecret);
+      const redirectUri = `${authConfig.oauthRedirectBaseUrl}/v1/auth/oauth/${providerParam}/callback`;
+
+      reply.redirect(provider.authorizeUrl({ clientId: credentials.clientId, redirectUri, state }), 302);
+    },
+  );
 
   app.get<{ Params: { provider: string }; Querystring: { code?: string; state?: string; error?: string } }>(
     "/v1/auth/oauth/:provider/callback",
     async (request, reply) => {
       const providerParam = request.params.provider;
 
+      // Recupera o `state` o quanto antes, mesmo antes de saber se o resto
+      // do pedido é válido: é o único lugar onde `target` sobrevive à
+      // ida-e-volta pelo provedor, e sem ele um erro no fluxo desktop
+      // voltaria (por padrão) pro navegador dev, quebrando silenciosamente
+      // o app empacotado. `state` ausente/adulterado apenas deixa
+      // `statePayload` nulo — o erro `invalid_state` de verdade ainda é
+      // reportado mais abaixo, na mesma ordem de sempre.
+      let statePayload: OAuthStatePayload | null = null;
+      try {
+        statePayload = verifyPayload<OAuthStatePayload>(request.query.state ?? "", authConfig.sessionSigningSecret);
+      } catch (err) {
+        if (!(err instanceof SignatureError)) throw err;
+      }
+      const target: OAuthTarget = statePayload && isOAuthTarget(statePayload.target) ? statePayload.target : "browser";
+
       function redirectWithError(code: string): void {
-        const target = new URL(authConfig.oauthFrontendRedirectUrl);
-        target.hash = `error=${encodeURIComponent(code)}`;
-        reply.redirect(target.toString(), 302);
+        const url = new URL(authConfig.oauthFrontendRedirectUrls[target]);
+        url.hash = `error=${encodeURIComponent(code)}`;
+        reply.redirect(url.toString(), 302);
       }
 
       if (!isOAuthProviderName(providerParam)) {
@@ -149,17 +189,7 @@ export function registerAuthRoutes(
         return;
       }
 
-      let statePayload: OAuthStatePayload;
-      try {
-        statePayload = verifyPayload<OAuthStatePayload>(request.query.state ?? "", authConfig.sessionSigningSecret);
-      } catch (err) {
-        if (err instanceof SignatureError) {
-          redirectWithError("invalid_state");
-          return;
-        }
-        throw err;
-      }
-      if (statePayload.provider !== providerParam || statePayload.exp < Date.now()) {
+      if (!statePayload || statePayload.provider !== providerParam || statePayload.exp < Date.now()) {
         redirectWithError("invalid_state");
         return;
       }
@@ -181,13 +211,13 @@ export function registerAuthRoutes(
         const user = userRepo.findOrCreateOAuthUser(providerParam, profile.providerAccountId, profile.email);
         const session = issueSession({ uid: user.id, email: user.email ?? undefined });
 
-        const target = new URL(authConfig.oauthFrontendRedirectUrl);
-        target.hash = new URLSearchParams({
+        const url = new URL(authConfig.oauthFrontendRedirectUrls[target]);
+        url.hash = new URLSearchParams({
           access_token: session.accessToken,
           refresh_token: session.refreshToken,
           provider: providerParam,
         }).toString();
-        reply.redirect(target.toString(), 302);
+        reply.redirect(url.toString(), 302);
       } catch (err) {
         request.log.error({ err, provider: providerParam }, "oauth: falha ao completar login");
         redirectWithError("provider_error");

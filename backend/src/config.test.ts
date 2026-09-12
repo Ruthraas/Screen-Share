@@ -20,8 +20,23 @@ test("configuração válida: usa defaults e mantém os valores explícitos", ()
   assert.equal(config.turn.host, "turn.example.com");
   assert.equal(config.turn.secret, "super-secreto");
   assert.equal(config.auth.oauthRedirectBaseUrl, "http://127.0.0.1:8787");
-  assert.equal(config.auth.oauthFrontendRedirectUrl, "http://127.0.0.1:5173/oauth.html");
+  assert.deepEqual(config.auth.oauthFrontendRedirectUrls, {
+    browser: "http://127.0.0.1:5173/oauth.html",
+    desktop: "screenshare://oauth-callback",
+  });
   assert.deepEqual(config.cors.allowedOrigins, ["http://127.0.0.1:5173", "https://tauri.localhost"]);
+});
+
+test("OAUTH_FRONTEND_REDIRECT_URL_BROWSER/_DESKTOP customizadas substituem os defaults", () => {
+  const config = loadConfig({
+    ...validEnv,
+    OAUTH_FRONTEND_REDIRECT_URL_BROWSER: "https://app.example.com/oauth.html",
+    OAUTH_FRONTEND_REDIRECT_URL_DESKTOP: "myapp://oauth-callback",
+  });
+  assert.deepEqual(config.auth.oauthFrontendRedirectUrls, {
+    browser: "https://app.example.com/oauth.html",
+    desktop: "myapp://oauth-callback",
+  });
 });
 
 test("CORS_ALLOWED_ORIGINS customizada é dividida por vírgula e sem espaços", () => {
