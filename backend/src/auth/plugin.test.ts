@@ -12,6 +12,19 @@ function buildTestApp() {
   return app;
 }
 
+test("caminho público com query string ainda é reconhecido como público", async () => {
+  // regressão: request.url inclui a query string, então comparar publicPaths
+  // contra a URL crua nunca bate para algo como "/health?x=1" (ou o /ws do
+  // signaling, que sempre carrega ?token=...&groupId=...).
+  const app = buildTestApp();
+  try {
+    const response = await app.inject({ method: "GET", url: "/health?debug=1" });
+    assert.equal(response.statusCode, 200);
+  } finally {
+    await app.close();
+  }
+});
+
 test("caminho público não exige token", async () => {
   const app = buildTestApp();
   try {
