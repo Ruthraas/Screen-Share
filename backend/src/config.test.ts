@@ -17,6 +17,12 @@ test("configuração válida: usa defaults de HOST/PORT/SIGNALING_PATH e mantém
   assert.equal(config.database.path, ":memory:");
   assert.equal(config.turn.host, "turn.example.com");
   assert.equal(config.turn.secret, "super-secreto");
+  assert.deepEqual(config.cors.allowedOrigins, ["http://127.0.0.1:5173", "https://tauri.localhost"]);
+});
+
+test("CORS_ALLOWED_ORIGINS customizada é dividida por vírgula e sem espaços", () => {
+  const config = loadConfig({ ...validEnv, CORS_ALLOWED_ORIGINS: " https://a.example.com , https://b.example.com" });
+  assert.deepEqual(config.cors.allowedOrigins, ["https://a.example.com", "https://b.example.com"]);
 });
 
 test("configuração válida: aceita FIREBASE_SERVICE_ACCOUNT_PATH no lugar do JSON", () => {
@@ -69,4 +75,5 @@ test("resumo público oculta segredos", () => {
   assert.doesNotMatch(serialized, /super-secreto/);
   assert.doesNotMatch(serialized, /project_id/);
   assert.match(serialized, /turn\.example\.com/, "campos não sensíveis continuam visíveis");
+  assert.match(serialized, /tauri\.localhost/, "allowlist de CORS não é segredo, continua visível");
 });
