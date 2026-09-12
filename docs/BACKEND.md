@@ -45,6 +45,79 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   `@redocly/cli lint` (0 erros, 1 warning cosmético de `info.license`, sem
   `LICENSE` no repo). Nenhum código de implementação ainda — só doc/contrato,
   como pede o escopo da issue.
+- **#28 — Serviço backend inicial com health check** (2026-09-12, branch
+  `feat/backend-service-bootstrap`): `backend/` criado como projeto Node.js +
+  TypeScript independente (não roda dentro do Tauri) com Fastify. Estrutura:
+  `src/config.ts` (host/porta, sem segredos — isso é #29), `src/server.ts`
+  (monta o Fastify sem dar `listen`, testável via `inject()`),
+  `src/routes/health.ts` (`GET /health` → `{status:"ok"}`), `src/index.ts`
+  (sobe o servidor, trata `SIGINT`/`SIGTERM` chamando `app.close()`).
+  Comando documentado em `backend/README.md` (`npm install && npm run dev`,
+  ou `npm run build && npm start`). Validado localmente: `npm run build` ok,
+  `npm test` (Node test runner via `tsx`) 5/5 passando, `npm start` sobe e
+  responde `/health` com 200. Nenhuma regra de produto/auth/persistência
+  ainda — só a base. Nota: o encerramento gracioso via sinal não pôde ser
+  validado ponta a ponta neste ambiente Windows de desenvolvimento (ver
+  `backend/README.md`); `app.close()` em si é coberto pelos testes.
+- **#29 — Configuração e gestão de segredos** (2026-09-12, branch
+  `feat/backend-config-secrets`): `src/config.ts` reescrito com schema
+  `zod` cobrindo banco (`DATABASE_PATH`), autenticação (Firebase service
+  account, path ou JSON), sinalização (`SIGNALING_PATH`) e TURN
+  (`TURN_HOST`/`TURN_SECRET`). Variáveis sem valor seguro por padrão
+  (banco, credencial Firebase, segredo TURN) são obrigatórias; sem elas o
+  processo sai com `ConfigError` listando cada campo problemático, sem
+  stack trace. `toPublicSummary()` redige segredos antes de qualquer log —
+  `index.ts` loga a config no startup só com essa versão redigida.
+  `.env.example` criado com placeholders (sem valores reais);
+  `backend/data/` e `backend/secrets/` adicionados ao `.gitignore` da raiz.
+  Decisão registrada em `docs/backend/ARQUITETURA.md`: persistência via
+  SQLite (`better-sqlite3`) e verificação de token via `firebase-admin`
+  (justificativas lá). Validado: `npm test` cobre config válida, ausente
+  (banco/Firebase faltando) e inválida (`PORT` fora do intervalo), mais um
+  teste que garante que `toPublicSummary()` não vaza segredo nenhum;
+  testado manualmente também via `node dist/index.js` sem env (falha limpa)
+  e com env válida (sobe e loga config redigida). Scanner de segredos:
+  varredura manual do diff por padrões conhecidos (chaves privadas, tokens
+  AWS/GCP/Slack/Stripe) — nada encontrado; nenhum arquivo `.env` real
+  rastreado.
+- **#30 — Verificação de tokens de autenticação** (2026-09-12, branch
+  `feat/backend-auth-tokens`): `src/auth/verifier.ts` define a interface
+  `TokenVerifier`/`AuthIdentity`; `src/auth/firebaseTokenVerifier.ts`
+  implementa via `firebase-admin` (`verifyIdToken`), carregando a service
+  account de `FIREBASE_SERVICE_ACCOUNT_JSON`/`_PATH` (#29); `src/auth/plugin.ts`
+  é um hook `onRequest` global que exige `Authorization: Bearer <token>` em
+  toda rota exceto as listadas em `publicPaths` (hoje só `/health`) — token
+  ausente, malformado, inválido ou expirado sempre responde `401
+  {"error":{"code":"unauthorized",...}}` usando o envelope de erro do
+  contrato (#27); em sucesso, `request.auth = { uid, email }` fica
+  disponível pros handlers. Identidade vem **só** do token verificado, nunca
+  de campo enviado pelo cliente. `src/testing/fakeTokenVerifier.ts` (só
+  testes) permite testar o plugin e o server sem Firebase real. Efeito
+  colateral notado nos testes: como a autenticação roda antes do roteamento,
+  uma rota inexistente sem token responde `401` em vez de `404` (só vira
+  `404` com token válido) — decisão deliberada, evita expor a um cliente não
+  autenticado quais rotas existem. Validado: `npm test` 15/15 (6 novos
+  testes do plugin + os 2 do server ajustados), `npm run build` ok, e
+  smoke test manual local (`/health` público 200, rota qualquer sem token
+  401, com token válido segue pro roteamento normal).
+- **#31 — Schema e migrações de grupos e membros** (2026-09-12, branch
+  `feat/backend-groups-schema`): `backend/migrations/0001_groups_and_members.sql`
+  cria `groups` (id, name, owner_id, created_at) e `group_members` (chave
+  composta `group_id`+`user_id`, `role` restrito a
+  `owner`/`admin`/`member`, `ON DELETE CASCADE` do grupo pros membros),
+  com índices em `owner_id` e `user_id`. `src/db/migrate.ts` é um runner
+  simples (tabela `_migrations`, migrações são arquivos `.sql` com blocos
+  `-- up`/`-- down`) — idempotente, e `migrateDownOne` desfaz a última
+  aplicada. `src/db/connection.ts` abre o SQLite com
+  `foreign_keys = ON` (senão o cascade não funciona). Novo comando `npm run
+  migrate` (`src/db/migrateCli.ts`) usa a config de #29. Presença efêmera
+  **não** é persistida aqui (fica pra #36), como pede o escopo da issue.
+  Validado: `npm test` 21/21 (6 novos: sobe em banco vazio, idempotência em
+  banco populado, desce e remove as tabelas, chave composta rejeita membro
+  duplicado, cascade remove membros ao excluir o grupo, role fora do enum é
+  rejeitada); e `npm run migrate` rodado de verdade contra um arquivo
+  `.db` real — vazio (cria as tabelas) e depois populado com uma
+  linha real (rodar de novo não duplica nem apaga o dado).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
