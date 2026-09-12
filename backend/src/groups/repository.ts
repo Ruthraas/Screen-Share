@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Role } from "../authz/policy.js";
-import { ConflictError, NotFoundError } from "./errors.js";
+import { ConflictError, NotFoundError } from "../errors.js";
 import { newGroupId, newInviteId, newInviteToken, nowIso } from "./ids.js";
 
 export interface Group {

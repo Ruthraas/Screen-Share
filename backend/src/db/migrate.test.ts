@@ -15,14 +15,21 @@ function tableNames(db: Database.Database): string[] {
   );
 }
 
-test("migrateUp em banco vazio cria groups, group_members e invites", () => {
+test("migrateUp em banco vazio cria groups, group_members, invites e users", () => {
   const db = freshDb();
   const applied = migrateUp(db, loadMigrations());
-  assert.deepEqual(applied, ["0001_groups_and_members.sql", "0002_invites.sql"]);
+  assert.deepEqual(applied, [
+    "0001_groups_and_members.sql",
+    "0002_invites.sql",
+    "0003_users_and_sessions.sql",
+  ]);
   const tables = tableNames(db);
   assert.ok(tables.includes("groups"));
   assert.ok(tables.includes("group_members"));
   assert.ok(tables.includes("invites"));
+  assert.ok(tables.includes("users"));
+  assert.ok(tables.includes("oauth_accounts"));
+  assert.ok(tables.includes("refresh_tokens"));
   db.close();
 });
 
@@ -46,13 +53,19 @@ test("migrateDownOne desfaz só a última migração aplicada, em ordem reversa"
   migrateUp(db, migrations);
 
   const undoneFirst = migrateDownOne(db, migrations);
-  assert.equal(undoneFirst, "0002_invites.sql");
+  assert.equal(undoneFirst, "0003_users_and_sessions.sql");
   let tables = tableNames(db);
+  assert.ok(!tables.includes("users"));
+  assert.ok(tables.includes("invites"), "0002 não deve ser desfeita ainda");
+
+  const undoneSecond = migrateDownOne(db, migrations);
+  assert.equal(undoneSecond, "0002_invites.sql");
+  tables = tableNames(db);
   assert.ok(!tables.includes("invites"));
   assert.ok(tables.includes("groups"), "0001 não deve ser desfeita ainda");
 
-  const undoneSecond = migrateDownOne(db, migrations);
-  assert.equal(undoneSecond, "0001_groups_and_members.sql");
+  const undoneThird = migrateDownOne(db, migrations);
+  assert.equal(undoneThird, "0001_groups_and_members.sql");
   tables = tableNames(db);
   assert.ok(!tables.includes("groups"));
   assert.ok(!tables.includes("group_members"));

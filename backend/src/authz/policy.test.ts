@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { requireMembership, requireRole, type MembershipLookup, type Role } from "./policy.js";
-import { ForbiddenError, NotFoundError } from "../groups/errors.js";
+import { ForbiddenError, NotFoundError } from "../errors.js";
 
 function repoWith(role: Role | undefined): MembershipLookup {
   return { getRole: () => role };

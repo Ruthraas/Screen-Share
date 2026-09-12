@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { buildServer } from "./server.js";
 import { FakeTokenVerifier } from "./testing/fakeTokenVerifier.js";
 import { createTestDb } from "./testing/testDb.js";
+import { testAuthConfig } from "./testing/testAuthConfig.js";
 
 function build() {
   return buildServer({
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
+    authConfig: testAuthConfig(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
     signalingPath: "/ws",
   });
