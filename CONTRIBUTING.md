@@ -4,9 +4,9 @@ Obrigado por colaborar. Antes de começar, leia o `README.md` e procure uma issu
 
 ## Fluxo de trabalho
 
-1. Escolha uma issue atribuída à sua área: frontend para `@Ruthraas` e backend para `@ProgVictorPe`.
-2. Crie uma branch curta a partir de `main`, por exemplo `fix/oauth-tauri` ou `feat/screen-capture`.
-3. Mantenha cada pull request focado em uma única issue.
+1. Escolha uma ou mais issues atribuídas à sua área: frontend para `@Ruthraas` e backend para `@ProgVictorPe`.
+2. Crie uma branch curta **a partir de `main`** (não de outra branch de feature ainda não mergeada) — ex. `fix/oauth-tauri` ou `feat/screen-capture`. PRs empilhados uns nos outros (base numa branch que não é `main`) só avançam a branch intermediária quando mergeados, não o `main` — evite essa armadilha.
+3. Agrupe num único pull request as issues que formam uma etapa completa e coerente (ex. "base executável do backend": serviço mínimo + config + auth + schema), em vez de abrir um PR por issue isolada. Sempre abra PR — nunca comite direto em `main` — mas prefira menos PRs maiores e completos a muitos PRs pequenos e fragmentados. Liste todas as issues fechadas com `Closes #N` (uma linha por issue).
 4. Atualize testes e documentação quando o comportamento mudar.
 5. Antes de abrir o PR, execute:
 
@@ -56,4 +56,4 @@ fix(ui): prevent opacity flicker on hover
 docs: document Windows build requirements
 ```
 
-No PR, explique o problema, a solução, como foi validada e riscos ou pendências. Vincule a issue com `Closes #123` quando o PR realmente concluir todos os critérios de aceite.
+No PR, explique o problema, a solução, como foi validada e riscos ou pendências. Vincule cada issue concluída com uma linha `Closes #123` (uma por issue, se o PR fechar mais de uma) quando o PR realmente concluir todos os critérios de aceite dela.
