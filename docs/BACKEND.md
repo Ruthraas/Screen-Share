@@ -174,6 +174,26 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   então não reproduz sozinha o ambiente exato do Ruthraas — a evidência de
   que a correção funciona é a ausência do diretório `build/` (prova que o
   `node-gyp rebuild` nem chegou a rodar), não a falta de Python aqui.
+- **#59 — CORS para o cliente React/Tauri** (2026-09-12, branch
+  `feat/backend-cors`): `@fastify/cors` registrado **antes** do plugin de
+  auth — importante porque o preflight `OPTIONS` do navegador nunca manda
+  `Authorization`, e o CORS precisa responder o preflight sozinho antes que
+  o `onRequest` de auth rejeite com 401. Allowlist vem de config validada
+  (`CORS_ALLOWED_ORIGINS`, issue #29), com default = as origens reais do
+  projeto: `http://127.0.0.1:5173` (dev server do Vite, igual ao `devUrl`
+  de `src-tauri/tauri.conf.json`) e `https://tauri.localhost` (origem do
+  WebView do Tauri 2 empacotado no Windows — único alvo de bundle hoje é
+  `nsis`). Origem fora da lista nunca recebe `Access-Control-Allow-Origin`
+  de volta (nem em preflight nem em requisição normal) — é isso que faz o
+  navegador bloquear, não depende do código de status. `/health` continua
+  público independente de CORS (CORS só afeta o que o navegador faz com a
+  resposta, não a autorização do servidor). Validado: `npm test` 44/44 (7
+  testes novos — origem de dev/Tauri autorizada com header refletido,
+  origem desconhecida sem o header em request normal e em preflight,
+  preflight libera `Authorization`+`Content-Type`, `/health` público com
+  origem desconhecida, requisição sem `Origin` não é afetada); smoke test
+  manual real via `curl -X OPTIONS` contra o processo confirmando os
+  mesmos comportamentos fora do ambiente de teste.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -220,7 +240,7 @@ de nada vem primeiro; grupos entre `---` podem andar em paralelo):
 
 - **#6** "Definir modelo persistente de grupos privados" — fechada, superseded por #27 (contrato) + #31 (schema).
 - **#7** "Implementar convites e presença em grupos" — fechada, superseded por #34 (convites) + #36 (presença).
-- **#9** "Implementar sinalização e conexão WebRTC" — fechada, superseded por #37 (serviço WS) + #38 (protocolo) + #39 (autorização). Ponto aberto anotado no comentário de fechamento: a implementação do `RTCPeerConnection` no cliente não tem issue própria clara do lado frontend — não é nosso escopo resolver, só ficar de olho.
+- **#9** "Implementar sinalização e conexão WebRTC" — fechada como superseded por #37+#38+#39, mas **reaberta pelo Ruthraas em seguida**: "main ainda não contém signaling/WebRTC... esta issue só deve fechar após validação integrada". Tratar como gate de integração igual à #10 daqui pra frente, não como duplicata simples.
 - **#10 continua aberta** — não é duplicado, é o gate de integração cross-team (depende de #20 do frontend + várias issues novas do backend).
 
 ## 4. Contrato com o Frontend
@@ -233,6 +253,7 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 - **Autenticação**: `Authorization: Bearer <idToken do Firebase Auth>` em toda requisição — o mesmo token que `src/services/firebase.ts` já obtém no login. Verificação real do token (#30) está implementada; sem header ou token invalido/expirado sempre dá `401`.
 - **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI. Códigos em uso: `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation_error` (422).
 - **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
+- **CORS (#59) já configurado**: o WebView do Tauri empacotado (`https://tauri.localhost`) e o dev server do Vite (`http://127.0.0.1:5173`) já estão na allowlist — chamadas fetch/XHR do cliente devem funcionar sem precisar de proxy nem de desabilitar segurança do WebView. Se o app rodar de outra origem (porta diferente, outro esquema), o backend vai rejeitar silenciosamente (sem `Access-Control-Allow-Origin`) — avisar o lado backend pra adicionar em `CORS_ALLOWED_ORIGINS`.
 - **Grupos e convites — implementados** (`src/routes/groups.ts`, testados): `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave` (dono recebe `409` se tentar saír sem transferir/excluir antes), `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept` (idempotente pra quem já é membro; `409` se expirado/revogado/esgotado). `PATCH`/criar-revogar-convite exigem papel `owner` ou `admin`; excluir grupo exige `owner`.
 - **Presença/TURN — ainda não implementados** (payloads já definidos em `openapi.yaml`, aguardando #36/#40/#41): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`, `POST /v1/turn-credentials`.
 - **WebSocket**: cliente troca offer/answer/ICE por um protocolo versionado com `correlationId` (#38, ainda a escrever) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend).
