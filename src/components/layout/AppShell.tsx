@@ -25,6 +25,12 @@ export function AppShell({
   const { user: currentUser, logout, selected } = useAccount();
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const avatarButtonRef = useRef<HTMLButtonElement>(null);
+
+  function closeProfileMenu() {
+    setProfileOpen(false);
+    avatarButtonRef.current?.focus();
+  }
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -32,9 +38,20 @@ export function AppShell({
         setProfileOpen(false);
       }
     }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && profileOpen) closeProfileMenu();
+    }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [profileOpen]);
+
+  useEffect(() => {
+    if (profileOpen) dropdownRef.current?.querySelector<HTMLElement>(".profile-menu-item")?.focus();
+  }, [profileOpen]);
 
   const profileMenu = profileOpen ? (
     <div className="profile-menu" role="menu" ref={dropdownRef}>
@@ -70,7 +87,7 @@ export function AppShell({
             <IconSettings />
           </button>
         </div>
-        <button className="avatar-button" onClick={() => setProfileOpen(!profileOpen)} title="perfil" aria-expanded={profileOpen} aria-haspopup="true">
+        <button ref={avatarButtonRef} className="avatar-button" onClick={() => setProfileOpen(!profileOpen)} title="perfil" aria-expanded={profileOpen} aria-haspopup="true">
           <Avatar user={currentUser} />
         </button>
       </aside>
