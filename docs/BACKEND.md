@@ -45,6 +45,20 @@ rotear, e não decide layout/design — isso é escopo do frontend.
   `@redocly/cli lint` (0 erros, 1 warning cosmético de `info.license`, sem
   `LICENSE` no repo). Nenhum código de implementação ainda — só doc/contrato,
   como pede o escopo da issue.
+- **#28 — Serviço backend inicial com health check** (2026-09-12, branch
+  `feat/backend-service-bootstrap`): `backend/` criado como projeto Node.js +
+  TypeScript independente (não roda dentro do Tauri) com Fastify. Estrutura:
+  `src/config.ts` (host/porta, sem segredos — isso é #29), `src/server.ts`
+  (monta o Fastify sem dar `listen`, testável via `inject()`),
+  `src/routes/health.ts` (`GET /health` → `{status:"ok"}`), `src/index.ts`
+  (sobe o servidor, trata `SIGINT`/`SIGTERM` chamando `app.close()`).
+  Comando documentado em `backend/README.md` (`npm install && npm run dev`,
+  ou `npm run build && npm start`). Validado localmente: `npm run build` ok,
+  `npm test` (Node test runner via `tsx`) 5/5 passando, `npm start` sobe e
+  responde `/health` com 200. Nenhuma regra de produto/auth/persistência
+  ainda — só a base. Nota: o encerramento gracioso via sinal não pôde ser
+  validado ponta a ponta neste ambiente Windows de desenvolvimento (ver
+  `backend/README.md`); `app.close()` em si é coberto pelos testes.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
