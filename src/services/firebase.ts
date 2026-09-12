@@ -86,6 +86,7 @@ export function authErrorMessage(error: unknown) {
     "auth/operation-not-supported-in-this-environment": "este ambiente nao suporta o popup. use o login desktop pelo navegador",
     "auth/network-request-failed": "falha de rede. confira sua conexao e tente novamente",
     "auth/invalid-api-key": "a chave de configuracao do firebase e invalida",
+    "auth/session-failed": "nao foi possivel restaurar sua sessao. entre novamente",
     "auth/invalid-email": "informe um email valido",
     "auth/too-many-requests": "muitas tentativas. aguarde antes de tentar novamente",
     "auth/cancelled-popup-request": "ja existe uma tentativa de login em andamento",

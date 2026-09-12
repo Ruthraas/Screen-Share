@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { onAuthStateChanged, signOut, updateProfile, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../../services/firebase";
-import { readAccount, writeAccount, type AccountData, type SavedGroup } from "../../services/localData";
+import { emptyAccountData, readAccount, writeAccount, type AccountData, type SavedGroup } from "../../services/localData";
 import type { Group, Preferences, User } from "../../data/types";
+import type { SessionState } from "../../services/sessionRouting";
 
 type Account = {
   user: User; groups: Group[]; selected: Group | undefined; bio: string; preferences: Preferences;
@@ -14,8 +15,11 @@ const Context = createContext<Account | null>(null);
 export const useAccount = () => { const value = useContext(Context); if (!value) throw new Error("account-required"); return value; };
 
 export function useSession() {
-  const [session, setSession] = useState<{ ready: boolean; user: FirebaseUser | null }>({ ready: !auth, user: null });
-  useEffect(() => auth ? onAuthStateChanged(auth, user => setSession({ ready: true, user }), () => setSession({ ready: true, user: null })) : undefined, []);
+  const [session, setSession] = useState<SessionState<FirebaseUser>>({ ready: !auth, user: null, error: auth ? null : "firebase-not-configured" });
+  useEffect(() => auth ? onAuthStateChanged(auth, user => setSession({ ready: true, user, error: null }), error => {
+    const code = typeof error === "object" && error && "code" in error ? String(error.code) : "auth/session-failed";
+    setSession({ ready: true, user: null, error: code });
+  }) : undefined, []);
   return session;
 }
 
@@ -37,7 +41,7 @@ export function AccountProvider({ account, children }: { account: FirebaseUser; 
     selectGroup(id) { if (data.groups.some(group => group.id === id)) commit({ ...data, selectedId: id }); },
     async saveProfile(name, bio, photoURL) { const trimmed = name.trim(); if (!trimmed) throw new Error("informe seu nome"); await updateProfile(account, { displayName: trimmed }); commit({ ...data, profile: { bio, photoURL } }); setName(trimmed); },
     setPreferences(preferences) { commit({ ...data, preferences }); },
-    async logout() { if (auth) await signOut(auth); },
+    async logout() { setData(emptyAccountData()); setName(""); if (auth) await signOut(auth); },
   };
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
