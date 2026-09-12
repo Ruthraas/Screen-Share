@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AuthError, authErrorMessage, buildOAuthStartUrl, isOAuthProvider } from "../../src/services/authClient.ts";
 
-test("oauth start url has no client-supplied query params", () => {
+test("oauth start url has no query params when no target is given", () => {
   const url = buildOAuthStartUrl("http://127.0.0.1:8787/", "google");
   assert.equal(url, "http://127.0.0.1:8787/v1/auth/oauth/google/start");
+});
+
+test("oauth start url carries target=browser|desktop (prepared for the backend, not read yet)", () => {
+  assert.equal(buildOAuthStartUrl("http://127.0.0.1:8787", "github", "browser"), "http://127.0.0.1:8787/v1/auth/oauth/github/start?target=browser");
+  assert.equal(buildOAuthStartUrl("http://127.0.0.1:8787", "discord", "desktop"), "http://127.0.0.1:8787/v1/auth/oauth/discord/start?target=desktop");
 });
 
 test("isOAuthProvider accepts only the three supported providers", () => {

@@ -114,13 +114,25 @@ function apiUrl(path: string): string {
   return `${baseUrl()}${path}`;
 }
 
-/** URL de início do fluxo OAuth (issue #30/#1): sem query params — o
- * backend não aceita `redirect_uri`/`state` do cliente, ele é quem decide
- * pra onde volta no final (`OAUTH_FRONTEND_REDIRECT_URL`, configurado no
- * backend). Função pura (recebe a base em vez de ler `import.meta.env`)
- * pra poder ser testada sem ambiente Vite. */
-export function buildOAuthStartUrl(apiBaseUrl: string, provider: OAuthProvider): string {
-  return `${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/oauth/${provider}/start`;
+export type OAuthTarget = "browser" | "desktop";
+
+/** URL de início do fluxo OAuth (issue #30/#1): o backend não aceita
+ * `redirect_uri`/`state` do cliente, ele é quem decide pra onde volta no
+ * final — só existe UM `OAUTH_FRONTEND_REDIRECT_URL` configurado por vez,
+ * então hoje não dá pra testar o fallback web e o desktop (deep link) ao
+ * mesmo tempo contra o mesmo backend.
+ *
+ * `target` já vai preparado (`?target=browser|desktop`) pro dia em que o
+ * backend passar a aceitar mais de um redirect configurado e escolher com
+ * base nisso — combinado com @ProgVictorPe, ainda não implementado do lado
+ * dele. Até lá o backend ignora esse parâmetro (rota não declara schema de
+ * querystring), então mandar já não quebra nada.
+ *
+ * Função pura (recebe a base em vez de ler `import.meta.env`) pra poder
+ * ser testada sem ambiente Vite. */
+export function buildOAuthStartUrl(apiBaseUrl: string, provider: OAuthProvider, target?: OAuthTarget): string {
+  const base = `${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/oauth/${provider}/start`;
+  return target ? `${base}?target=${target}` : base;
 }
 
 async function parseJsonSafe(response: Response): Promise<any> {
@@ -228,7 +240,7 @@ export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSessi
     return session;
   }
 
-  location.href = buildOAuthStartUrl(baseUrl(), provider);
+  location.href = buildOAuthStartUrl(baseUrl(), provider, "browser");
   return new Promise<AuthSession>(() => {});
 }
 
