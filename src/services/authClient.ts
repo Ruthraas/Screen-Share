@@ -104,8 +104,15 @@ export function getAccessToken(): string | null {
   return currentSession?.tokens.accessToken ?? null;
 }
 
+let apiBaseUrlOverride: string | undefined;
+/** Só para testes: `node --test` roda fora do Vite, então `import.meta.env`
+ * não existe — isso dá um ponto de injeção em vez de mockar `import.meta`. */
+export function __setApiBaseUrlForTests(url: string | undefined): void {
+  apiBaseUrlOverride = url;
+}
+
 function baseUrl(): string {
-  const value = import.meta.env.VITE_API_URL as string | undefined;
+  const value = apiBaseUrlOverride ?? (import.meta.env?.VITE_API_URL as string | undefined);
   if (!value) throw new AuthError("api-not-configured");
   return value.replace(/\/+$/, "");
 }
@@ -189,7 +196,23 @@ export async function loginWithEmail(email: string, password: string): Promise<A
   return session;
 }
 
-export async function refreshSession(refreshToken: string): Promise<AuthSession> {
+let refreshInFlight: Promise<AuthSession> | null = null;
+
+/** O backend rotaciona o refresh token a cada uso (o antigo morre assim que
+ * um novo é emitido) — duas chamadas concorrentes com o mesmo token (ex.:
+ * `useEffect` duplicado do React StrictMode em dev, ou o timer de refresh
+ * silencioso disparando junto de uma restauração manual) fariam a segunda
+ * usar um token já revogado pela primeira e derrubar a sessão à toa. Uma
+ * única chamada em voo por vez, compartilhada entre quem pedir. */
+export function refreshSession(refreshToken: string): Promise<AuthSession> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = doRefreshSession(refreshToken).finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefreshSession(refreshToken: string): Promise<AuthSession> {
   const data = await postJson("/v1/auth/refresh", { refreshToken });
   const session = toSession(data.accessToken, data.refreshToken);
   await persistSession(session);
