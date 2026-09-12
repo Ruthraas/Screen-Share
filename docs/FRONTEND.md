@@ -49,9 +49,24 @@ ele falha por DNS, não vaza nada.
 
 Cobre: login por e-mail/senha → estado vazio (sem grupos) → criar grupo →
 tela de compartilhamento → grupos → trocar tema → editar perfil → reload
-(sessão restaurada via refresh token) → paleta de comandos → responsividade
-em 3 resoluções → logout → guarda de rota (`#/profile` sem sessão volta pro
-login). Também valida a geometria/hover da `PixelWave` (issue #3/#4).
+(sessão restaurada via refresh token) → paleta de comandos (abre, filtra de
+verdade, Enter navega — issue #17/#26) → responsividade em 3 resoluções →
+logout → guarda de rota (`#/profile` sem sessão volta pro login). Também
+valida a geometria/hover da `PixelWave` (issue #3/#4) e o `ScreenViewer` com
+um `MediaStream` real via `canvas.captureStream()` (issue #19/#26, ver §3.1).
+
+### 3.1 `test-harness/` — componentes sem rota própria
+
+`ScreenViewer` (e qualquer componente futuro sem tela própria) não é
+alcançável navegando o app normal. `test-harness/screen-viewer.html` +
+`.tsx` montam esse componente isolado, com controles expostos em
+`window.__harness` pro smoke test dirigir. **Nunca entra no bundle de
+produção** — a pasta não está em `vite.config.ts`
+(`build.rollupOptions.input` só lista `index.html`/`oauth.html`), só é
+servida pelo dev server que o próprio `check-ui.mjs` sobe pra rodar os
+testes. Não é typechecado por `tsc -b` (escopo do `tsconfig.app.json` é só
+`src/`) — erros de sintaxe aparecem indiretamente quando o smoke test tenta
+carregar a página e falha.
 
 Capturas de tela vão para `artifacts/ui/` (gitignored) — em caso de falha,
 uma captura extra `failure.png` mostra o estado exato em que travou. No CI
