@@ -1,6 +1,23 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <!-- Issue #15: restaura o tema antes da primeira pintura, pra não
+         piscar o tema errado ao reabrir. A preferência "de verdade" é por
+         conta e só fica disponível depois que a sessão restaura
+         (assíncrono) — este espelho fica fora desse namespace
+         (services/localData.ts, persistDeviceTheme) e é lido aqui de
+         forma síncrona. Escuro é o padrão do CSS (:root sem atributo), daí
+         só precisa setar o atributo quando for "light"; qualquer valor
+         ausente/inválido já cai no escuro sem fazer nada. -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("screenshare.theme") === "light") {
+            document.documentElement.dataset.theme = "light";
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ScreenShare</title>

@@ -18,3 +18,18 @@ export function readAccount(uid: string): AccountData {
 export function writeAccount(uid: string, data: AccountData) {
   localStorage.setItem(key(uid), JSON.stringify(data));
 }
+
+const DEVICE_THEME_KEY = "screenshare.theme";
+
+/** Espelho do tema ativo fora do namespace por conta — lido de forma
+ * síncrona pelo script inline em index.html antes da primeira pintura
+ * (issue #15), já que a preferência "de verdade" só fica disponível depois
+ * que a sessão restaura (assíncrono) e a conta é conhecida. Se a chave
+ * mudar de nome, atualizar o script inline em index.html junto. */
+export function persistDeviceTheme(theme: Preferences["theme"]) {
+  try {
+    localStorage.setItem(DEVICE_THEME_KEY, theme);
+  } catch {
+    // localStorage indisponível (ex.: modo privado) — só perde a restauração pré-pintura.
+  }
+}
