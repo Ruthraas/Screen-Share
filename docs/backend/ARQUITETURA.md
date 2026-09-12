@@ -56,7 +56,11 @@ SQLite via `better-sqlite3`, autenticação com `firebase-admin`.**
   callback/pool para gerenciar), migrações reversíveis simples de escrever à
   mão (issue #31), e zero custo/infra adicional para os dois mantenedores.
   Reavaliar se o produto crescer para múltiplos processos/instâncias
-  concorrentes gravando no mesmo banco.
+  concorrentes gravando no mesmo banco. **Custo conhecido (issue #58):**
+  `better-sqlite3` é um addon nativo; a instalação depende de um binário
+  pré-compilado pra plataforma/arquitetura (linux/darwin/win32 × x64/arm64,
+  cobertos hoje) — ver `backend/README.md` e `backend/.npmrc` pro porquê
+  disso quase quebrou a instalação no Windows.
 - `firebase-admin`: o cliente já autentica via Firebase Auth
   (`src/services/firebase.ts`); verificar o mesmo ID token no backend com o
   SDK oficial evita reimplementar verificação de JWT/JWK manualmente
