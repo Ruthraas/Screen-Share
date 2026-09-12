@@ -1,91 +1,25 @@
-import { useEffect, useId, useState } from "react";
-
-interface Sparkle {
-  x: number;
-  y: number;
-  size: number;
-  opacity: number;
-  delay: number;
-  duration: number;
-  drift: number;
-}
-
 export function PixelWave() {
-  const id = useId().replace(/:/g, "");
-  const [sparkles, setSparkles] = useState<Sparkle[]>([]);
-
-  useEffect(() => {
-    const generateSparkles = () => {
-      const newSparkles: Sparkle[] = Array.from({ length: 50 }, () => ({
-        x: Math.random() * 100,
-        y: 55 + Math.random() * 5,
-        size: 2 + Math.random() * 3,
-        opacity: 0.3 + Math.random() * 0.5,
-        delay: Math.random() * 5,
-        duration: 4 + Math.random() * 5,
-        drift: (Math.random() - 0.5) * 1.2,
-      }));
-      setSparkles(newSparkles);
-    };
-    generateSparkles();
-    const interval = setInterval(generateSparkles, 6000);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
-    <svg
-      className="pixel-wave"
-      width="100%"
-      height="60"
-      viewBox="0 0 100 60"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      style={{ overflow: "visible", display: "block" }}
-    >
+    <svg className="pixel-wave" width="100%" height="28" viewBox="0 0 640 28" preserveAspectRatio="none" aria-hidden="true">
       <defs>
-        <radialGradient id={`${id}-sparkle-glow`} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="1" />
-          <stop offset="60%" stopColor="var(--accent)" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-        </radialGradient>
+        <pattern id="wave-back" width="40" height="28" patternUnits="userSpaceOnUse">
+          <rect x="0" y="16" width="8" height="12" rx="1" fill="var(--wave-back)" />
+          <rect x="14" y="10" width="8" height="18" rx="1" fill="var(--wave-back)" />
+          <rect x="28" y="18" width="8" height="10" rx="1" fill="var(--wave-back)" />
+        </pattern>
+        <pattern id="wave-mid" width="40" height="28" patternUnits="userSpaceOnUse">
+          <rect x="6" y="20" width="8" height="8" rx="1" fill="var(--wave-mid)" />
+          <rect x="20" y="14" width="8" height="14" rx="1" fill="var(--wave-mid)" />
+          <rect x="34" y="19" width="8" height="9" rx="1" fill="var(--wave-mid)" />
+        </pattern>
+        <pattern id="wave-front" width="40" height="28" patternUnits="userSpaceOnUse">
+          <rect x="12" y="21" width="8" height="7" rx="1" fill="var(--wave-front)" />
+          <rect x="26" y="16" width="8" height="12" rx="1" fill="var(--wave-front)" />
+        </pattern>
       </defs>
-
-      {sparkles.map((s, i) => (
-        <circle
-          key={i}
-          cx={`${s.x}%`}
-          cy={`${s.y}%`}
-          r={s.size}
-          fill={`url(#${id}-sparkle-glow)`}
-          opacity={s.opacity}
-          style={{
-            animation: `sparkle-${i} ${s.duration}s ease-in-out ${s.delay}s infinite`,
-            transformOrigin: `${s.x}% ${s.y}%`,
-          } as any}
-        />
-      ))}
-      <style>{`
-        ${sparkles.map((s, i) => `
-          @keyframes sparkle-${i} {
-            0%, 100% {
-              opacity: 0;
-              transform: translate(0, 0) scale(0.2);
-            }
-            10% {
-              opacity: ${s.opacity};
-              transform: translate(${s.drift * 20}px, -8px) scale(1);
-            }
-            35% {
-              opacity: ${s.opacity * 0.9};
-              transform: translate(${s.drift * 40}px, -22px) scale(1.5);
-            }
-            65% {
-              opacity: ${s.opacity * 0.4};
-              transform: translate(${s.drift * 25}px, -10px) scale(0.8);
-            }
-          }
-        `).join('')}
-      `}</style>
+      <rect width="100%" height="28" fill="url(#wave-back)" />
+      <rect width="100%" height="28" fill="url(#wave-mid)" />
+      <rect width="100%" height="28" fill="url(#wave-front)" />
     </svg>
   );
 }

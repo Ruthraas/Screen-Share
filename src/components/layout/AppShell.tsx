@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useAccount } from "./AccountProvider";
 import { Avatar } from "../ui/Avatar";
 import { BrandMark, IconHome, IconSettings, IconUsers, IconLogout, IconUser } from "../ui/Icons";
+import { PixelWave } from "./PixelWave";
 
 type Route = "login" | "empty" | "home" | "share" | "multi" | "settings" | "profile";
 
@@ -94,6 +95,7 @@ export function AppShell({
         ) : <header className="topbar"><span className="muted">{route === "profile" ? "perfil" : route === "settings" ? "configuracoes" : "sem grupo selecionado"}</span></header>}
         {children}
       </main>
+      <PixelWave />
       {profileMenu && createPortal(profileMenu, document.body)}
     </div>
   );
