@@ -1,58 +1,46 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleAuthProvider, GithubAuthProvider, signInWithPopup, setPersistence, inMemoryPersistence, signOut } from "firebase/auth";
-import { auth, authErrorMessage } from "./services/firebase";
-import { Button } from "./components/ui/Button";
 import { BrandMark } from "./components/ui/Icons";
 import "./styles.css";
 
-const params = new URLSearchParams(location.hash.slice(1));
+const params = new URLSearchParams(location.search);
 const state = params.get("state");
-const provider = params.get("provider");
+const handoffCode = params.get("handoff_code");
+const error = params.get("error");
 history.replaceState(null, "", location.pathname);
 
-function BrowserLogin() {
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [message, setMessage] = useState("");
-  const completedRef = useRef(false);
+/**
+ * Página de retorno do fluxo OAuth no navegador (fallback de desenvolvimento
+ * fora do Tauri — issue #1/#30). O backend já concluiu a troca com o
+ * provedor e redirecionou para cá só com `state`, `handoff_code` (ou
+ * `error`) via query params; nunca com o token em si. Esta página apenas
+ * repassa esses valores para a janela que abriu o popup via `postMessage` e
+ * se fecha — a troca do `handoff_code` pelo token acontece em `authClient`.
+ */
+function OAuthCallback() {
+  const [delivered, setDelivered] = useState(false);
 
   useEffect(() => {
-    function cancelPendingLogin() {
-      if (completedRef.current || !state) return;
-      const body = new Blob([JSON.stringify({ state })], { type: "application/json" });
-      navigator.sendBeacon("/cancel", body);
-    }
-
-    window.addEventListener("beforeunload", cancelPendingLogin);
-    return () => window.removeEventListener("beforeunload", cancelPendingLogin);
+    if (!window.opener) return;
+    window.opener.postMessage({ type: "screenshare-oauth", state, handoffCode, error }, location.origin);
+    setDelivered(true);
+    const timer = window.setTimeout(() => window.close(), 600);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  async function finish(payload: object) {
-    const response = await fetch("/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state, ...payload }) });
-    if (!response.ok) throw new Error("callback-failed");
-  }
-  async function login() {
-    if (!auth || !state || !["google", "github"].includes(provider ?? "")) { setMessage("abra esta pagina pelo aplicativo screenshare"); return; }
-    setBusy(true); setMessage("");
-    try {
-      await setPersistence(auth, inMemoryPersistence);
-      const selected = provider === "google" ? new GoogleAuthProvider() : new GithubAuthProvider();
-      if (selected instanceof GithubAuthProvider) { selected.addScope("read:user"); selected.addScope("user:email"); }
-      const result = await signInWithPopup(auth, selected);
-      const credential = provider === "google" ? GoogleAuthProvider.credentialFromResult(result) : GithubAuthProvider.credentialFromResult(result);
-      if (!credential) throw new Error("missing-credential");
-      await finish({ idToken: credential.idToken, accessToken: credential.accessToken });
-      completedRef.current = true;
-      setDone(true); setMessage("login concluido. volte ao screenshare; esta aba pode ser fechada");
-    } catch (error) {
-      const code = typeof error === "object" && error && "code" in error ? String(error.code) : "auth/provider-failed";
-      await finish({ error: code }).catch(() => {});
-      completedRef.current = true;
-      setMessage(authErrorMessage(error));
-    }
-    finally { if (auth) await signOut(auth).catch(() => {}); setBusy(false); }
-  }
-  return <main className="settings-stage oauth-browser"><section className="form-card"><BrandMark /><h1>entrar no screenshare</h1><p>continue com {provider === "github" ? "github" : "google"} para entrar no aplicativo</p>{!done ? <Button onClick={login} disabled={busy}>{busy ? "aguarde" : "> continuar"}</Button> : null}<p role="status" className="auth-status">{message}</p></section></main>;
+  return (
+    <main className="settings-stage oauth-browser">
+      <section className="form-card">
+        <BrandMark />
+        <h1>screenshare</h1>
+        <p role="status" className="auth-status">
+          {delivered
+            ? "login concluido. volte ao screenshare; esta aba pode ser fechada"
+            : "abra esta pagina pelo aplicativo screenshare"}
+        </p>
+      </section>
+    </main>
+  );
 }
-createRoot(document.getElementById("root")!).render(<BrowserLogin />);
+
+createRoot(document.getElementById("root")!).render(<OAuthCallback />);

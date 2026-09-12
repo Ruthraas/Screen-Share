@@ -25,7 +25,7 @@ function App() {
   if (view === "loading") return <div className="app-frame"><SplashScreen leaving={false} /></div>;
   if (view === "login") return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
   if (!session.user) return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
-  return <AccountProvider key={session.user.uid} account={session.user}><AuthenticatedApp signedIn /></AccountProvider>;
+  return <AccountProvider key={session.user.id} account={session.user}><AuthenticatedApp signedIn /></AccountProvider>;
 }
 
 function AuthenticatedApp({ signedIn, sessionError }: { signedIn: boolean; sessionError?: string }) {
