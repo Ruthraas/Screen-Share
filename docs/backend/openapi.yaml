@@ -3,12 +3,12 @@ info:
   title: ScreenShare Backend API
   version: "1.0.0"
   description: >
-    Contrato HTTP inicial do backend do ScreenShare (issue #27). Cobre
-    grupos, convites, presença e emissão de credenciais TURN. A
-    sinalização WebRTC (offer/answer/ICE) usa WebSocket, definido
-    separadamente na issue #38 — não faz parte deste documento.
-    Implementação ainda não existe; este arquivo é o contrato a
-    implementar issue por issue (ver docs/backend/ARQUITETURA.md).
+    Contrato HTTP do backend do ScreenShare (issue #27). Cobre autenticação
+    própria (cadastro, login, OAuth, refresh, logout), grupos, convites,
+    presença e emissão de credenciais TURN. A sinalização WebRTC
+    (offer/answer/ICE) usa WebSocket, definido separadamente na issue #38 —
+    não faz parte deste documento. Ver docs/backend/ARQUITETURA.md pra
+    decisões de implementação e status por issue.
 servers:
   - url: /v1
     description: Versão atual. Mudanças incompatíveis usam /v2 em vez de alterar esta.
@@ -17,6 +17,8 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: auth
+    description: Cadastro, login, OAuth (Google/GitHub/Discord), refresh e logout.
   - name: groups
     description: Criação e gestão de grupos privados.
   - name: invites
@@ -27,6 +29,164 @@ tags:
     description: Emissão de credenciais TURN temporárias.
 
 paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Cadastrar com e-mail e senha
+      operationId: authRegister
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 200 }
+      responses:
+        "201":
+          description: Conta criada; sessão já emitida (login automático).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "409":
+          description: E-mail já cadastrado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login com e-mail e senha
+      operationId: authLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Sessão emitida.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401":
+          description: E-mail ou senha inválidos — resposta genérica, não diferencia conta inexistente de senha errada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Trocar um refresh token válido por uma nova sessão
+      operationId: authRefresh
+      security: []
+      description: O refresh token usado é revogado (rotação) — a resposta traz um novo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: Nova sessão.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401":
+          description: Refresh token inválido, expirado ou já usado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revogar um refresh token
+      operationId: authLogout
+      security: []
+      description: Idempotente — token já revogado ou inexistente também responde 204.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "204":
+          description: Refresh token revogado (ou já estava).
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/oauth/{provider}/start:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, enum: [google, github, discord] }
+    get:
+      tags: [auth]
+      summary: Inicia o login OAuth — redireciona pro provedor
+      operationId: authOAuthStart
+      security: []
+      responses:
+        "302":
+          description: Redireciona pra URL de autorização do provedor, com um state assinado e expirável.
+        "404":
+          description: Provedor desconhecido ou sem credenciais configuradas ainda.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/oauth/{provider}/callback:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, enum: [google, github, discord] }
+      - name: code
+        in: query
+        schema: { type: string }
+      - name: state
+        in: query
+        schema: { type: string }
+      - name: error
+        in: query
+        schema: { type: string }
+        description: "Erro reportado pelo provedor (ex. usuário cancelou) — nunca repassado cru ao cliente."
+    get:
+      tags: [auth]
+      summary: Callback do provedor OAuth — troca code por sessão própria
+      operationId: authOAuthCallback
+      security: []
+      responses:
+        "302":
+          description: >
+            Redireciona pra OAUTH_FRONTEND_REDIRECT_URL com o resultado num
+            fragmento da URL (nunca query string, pra não ficar em log):
+            sucesso vira `#access_token=...&refresh_token=...&provider=...`;
+            falha vira `#error=<código>` (`invalid_state`, `missing_code`,
+            `provider_error`, `provider_not_configured`, `provider_unknown`).
+
   /groups:
     post:
       tags: [groups]
@@ -367,8 +527,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
-      description: Token de ID do Firebase Auth do usuário autenticado no cliente.
+      description: >
+        Access token de sessão emitido pelo próprio backend (issue #30, via
+        /auth/register, /auth/login ou /auth/oauth/{provider}/callback) —
+        não é mais um token do Firebase. Vida curta (15 min); renovar com
+        /auth/refresh usando o refreshToken da mesma resposta.
 
   parameters:
     GroupId:
@@ -450,6 +613,17 @@ components:
             correlationId:
               type: string
               description: Correlaciona com os logs do backend (issue #44). Nunca contém dado sensível.
+
+    Session:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken:
+          type: string
+          description: Bearer token de vida curta (15 min) — usar em toda requisição autenticada.
+        refreshToken:
+          type: string
+          description: Valor opaco de vida longa (30 dias) — trocar por nova sessão em /auth/refresh antes de expirar. Rotaciona a cada uso.
 
     Role:
       type: string

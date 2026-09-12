@@ -3,45 +3,56 @@ import cors from "@fastify/cors";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerGroupRoutes } from "./routes/groups.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { authPlugin } from "./auth/plugin.js";
 import type { TokenVerifier } from "./auth/verifier.js";
+import { UserRepository } from "./auth/userRepository.js";
+import type { OAuthProvider, OAuthProviderName } from "./auth/oauthProviders.js";
 import { errorBody } from "./http/errors.js";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "./groups/errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "./errors.js";
 import { GroupsRepository } from "./groups/repository.js";
 import { PresenceStore } from "./presence/store.js";
 import { SignalingRooms } from "./signaling/room.js";
 import signalingPlugin from "./signaling/plugin.js";
+import type { AppConfig } from "./config.js";
 import type Database from "better-sqlite3";
 
 export interface BuildServerOptions {
   verifier: TokenVerifier;
   db: Database.Database;
+  authConfig: AppConfig["auth"];
   corsAllowedOrigins: string[];
   signalingPath: string;
   presence?: PresenceStore;
   rooms?: SignalingRooms;
   /** Só para testes que precisam inspecionar log (ex.: confirmar que SDP/ICE não vaza). */
   logger?: FastifyServerOptions["logger"];
+  /** Só para testes: injeta providers OAuth falsos em vez dos reais (Google/GitHub/Discord). */
+  oauthProviders?: Record<OAuthProviderName, OAuthProvider>;
 }
 
 /**
  * Monta a instância do Fastify sem chamar listen() — permite testar rotas
  * via app.inject() sem abrir uma porta real (issue #28, critério de teste).
- * Toda rota HTTP exige token válido (issue #30), exceto /health. A conexão
- * WebSocket de sinalização (issue #37) autentica via query string, já que
- * o navegador não manda header Authorization no handshake de WS.
+ * Toda rota HTTP exige token válido (issue #30), exceto /health e
+ * /v1/auth/*. A conexão WebSocket de sinalização (issue #37) autentica via
+ * query string, já que o navegador não manda header Authorization no
+ * handshake de WS.
  */
 export function buildServer({
   verifier,
   db,
+  authConfig,
   corsAllowedOrigins,
   signalingPath,
   presence,
   rooms,
   logger,
+  oauthProviders,
 }: BuildServerOptions): FastifyInstance {
   const app = Fastify({ logger: logger ?? true });
   const groupsRepo = new GroupsRepository(db);
+  const userRepo = new UserRepository(db);
   const presenceStore = presence ?? new PresenceStore();
   const signalingRooms = rooms ?? new SignalingRooms();
 
@@ -67,9 +78,15 @@ export function buildServer({
   // "/ws" carrega token/groupId na query string, não num header Authorization
   // (o WebSocket do navegador não permite setar esse header no handshake) —
   // por isso entra em publicPaths do auth HTTP e faz sua própria verificação
-  // dentro do plugin de signaling.
-  app.register(authPlugin, { verifier, publicPaths: ["/health", signalingPath] });
+  // dentro do plugin de signaling. "/v1/auth/" é público por natureza: são
+  // as rotas que criam/renovam/destroem a própria sessão (issue #30).
+  app.register(authPlugin, {
+    verifier,
+    publicPaths: ["/health", signalingPath],
+    publicPrefixes: ["/v1/auth/"],
+  });
   registerHealthRoutes(app);
+  registerAuthRoutes(app, userRepo, authConfig, oauthProviders);
   registerGroupRoutes(app, groupsRepo);
   registerPresenceRoutes(app, groupsRepo, presenceStore);
   app.register(signalingPlugin, { path: signalingPath, verifier, groupsRepo, rooms: signalingRooms });
@@ -79,6 +96,10 @@ export function buildServer({
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ValidationError) {
       reply.code(422).send(errorBody("validation_error", err.message, request.id));
+      return;
+    }
+    if (err instanceof UnauthorizedError) {
+      reply.code(401).send(errorBody("unauthorized", err.message, request.id));
       return;
     }
     if (err instanceof NotFoundError) {
