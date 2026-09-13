@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrateCli.ts",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test src/**/*.test.ts",
+    "test:e2e-manual": "node scripts/testar-fluxo-completo.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
