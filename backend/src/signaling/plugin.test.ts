@@ -15,7 +15,10 @@ import type { FastifyInstance } from "fastify";
  * reproduz com um socket TCP real). Sinalização manda "joined" assim que
  * conecta, então precisamos do socket de verdade aqui.
  */
-async function build(logger?: BuildServerOptions["logger"]): Promise<{ app: FastifyInstance; baseUrl: string }> {
+async function build(
+  logger?: BuildServerOptions["logger"],
+  signalingHeartbeatIntervalMs?: number,
+): Promise<{ app: FastifyInstance; baseUrl: string }> {
   const app = buildServer({
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
@@ -23,6 +26,7 @@ async function build(logger?: BuildServerOptions["logger"]): Promise<{ app: Fast
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
     signalingPath: "/ws",
     ...(logger ? { logger } : {}),
+    ...(signalingHeartbeatIntervalMs ? { signalingHeartbeatIntervalMs } : {}),
   });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
@@ -193,6 +197,96 @@ test("ao desconectar, os demais participantes recebem 'peer-left'", async () => 
     assert.equal(left.from, "member1");
 
     wsOwner.terminate();
+  } finally {
+    await app.close();
+  }
+});
+
+test("reconexão (mesma conta, nova conexão sem a antiga ter caído) avisa os outros com 'peer-reconnected', não 'peer-joined' de novo (issue #42)", async () => {
+  const { app, baseUrl } = await build();
+  try {
+    const group = await createGroupWithMember(app, "owner1", "member1");
+    const wsOwner = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    await nextMessage(wsOwner); // joined
+    const wsMember1 = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(wsMember1); // joined
+    await nextMessage(wsOwner); // peer-joined (member1, primeira conexão)
+
+    const nextOnOwner = nextMessage(wsOwner);
+    const wsMember2 = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(wsMember2); // joined (a conexão nova recebe joined igual)
+
+    const reconnected = await nextOnOwner;
+    assert.equal(reconnected.type, "peer-reconnected");
+    assert.equal(reconnected.from, "member1");
+
+    // A conexão antiga é fechada pelo servidor (substituída) — seu 'close'
+    // não deve gerar um 'peer-left' pra alguém que continua conectado.
+    const oldClosed = await nextClose(wsMember1);
+    assert.equal(oldClosed, 4409);
+
+    let sawSpuriousLeft = false;
+    wsOwner.once("message", (data: Buffer) => {
+      if (JSON.parse(data.toString()).type === "peer-left") sawSpuriousLeft = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(sawSpuriousLeft, false, "member1 continua conectado (via wsMember2) — não pode virar peer-left");
+
+    wsOwner.terminate();
+    wsMember2.terminate();
+  } finally {
+    await app.close();
+  }
+});
+
+test("desconectar de verdade depois de já ter reconectado ainda avisa peer-left (a conexão certa é rastreada)", async () => {
+  const { app, baseUrl } = await build();
+  try {
+    const group = await createGroupWithMember(app, "owner1", "member1");
+    const wsOwner = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    await nextMessage(wsOwner); // joined
+    const wsMember1 = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(wsMember1);
+    await nextMessage(wsOwner); // peer-joined
+
+    const wsMember2 = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(wsMember2); // joined
+    await nextMessage(wsOwner); // peer-reconnected
+    await nextClose(wsMember1); // conexão antiga fechada pelo servidor
+
+    const nextOnOwner = nextMessage(wsOwner);
+    wsMember2.terminate(); // agora sim, a conexão ativa cai de verdade
+    const left = await nextOnOwner;
+    assert.equal(left.type, "peer-left");
+    assert.equal(left.from, "member1");
+
+    wsOwner.terminate();
+  } finally {
+    await app.close();
+  }
+});
+
+test("conexão que não responde ao ping do heartbeat é encerrada e os outros recebem 'peer-left' (issue #42)", async () => {
+  const { app, baseUrl } = await build(undefined, 30);
+  try {
+    const group = await createGroupWithMember(app, "owner1", "member1");
+    const wsOwner = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    await nextMessage(wsOwner); // joined
+    const wsMember = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(wsMember); // joined
+    await nextMessage(wsOwner); // peer-joined
+
+    // Simula queda de rede sem close limpo: pausa o socket do cliente, que
+    // para de processar frames (inclusive o ping do servidor) e por isso
+    // nunca responde com pong — é isto que o heartbeat detecta.
+    wsMember.pause();
+
+    const left = await nextMessage(wsOwner);
+    assert.equal(left.type, "peer-left");
+    assert.equal(left.from, "member1");
+
+    wsOwner.terminate();
+    wsMember.terminate();
   } finally {
     await app.close();
   }
