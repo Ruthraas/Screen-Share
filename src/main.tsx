@@ -1,9 +1,11 @@
 import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CreateGroupModal } from "./components/groups/CreateGroupModal";
+import { JoinGroupModal } from "./components/groups/JoinGroupModal";
 import { AppShell } from "./components/layout/AppShell";
 import { ErrorBoundary } from "./components/layout/ErrorBoundary";
 import { SplashScreen } from "./components/layout/SplashScreen";
+import { ErrorState, LoadingState } from "./components/ui/AsyncState";
 import { EmptyState } from "./pages/EmptyState";
 import { Login } from "./pages/Login";
 import { Profile } from "./pages/Profile";
@@ -91,24 +93,29 @@ function AuthenticatedApp({ signedIn, sessionError }: { signedIn: boolean; sessi
 }
 
 function Workspace({ route, navigate, createOpen, setCreateOpen, paletteOpen, setPaletteOpen }: { route: Route; navigate: (route: Route) => void; createOpen: boolean; setCreateOpen: (value: boolean) => void; paletteOpen: boolean; setPaletteOpen: (value: boolean) => void }) {
-  const { groups, selected } = useAccount();
-  const effectiveRoute = routeAfterLogin(route, { groups, selectedId: selected?.id ?? null });
+  const { groups, groupsState, selected, reloadGroups } = useAccount();
+  const [joinOpen, setJoinOpen] = useState(false);
+  // issue #60: enquanto a lista real de grupos ainda está carregando, não
+  // decide a rota com base numa lista vazia (senão sempre pisca "empty"
+  // antes do fetch de verdade terminar, mesmo pra quem já tem grupos).
+  const effectiveRoute = groupsState.status === "loading" ? route : routeAfterLogin(route, { groups, selectedId: selected?.id ?? null });
   useEffect(() => {
-    if (effectiveRoute !== route) navigate(effectiveRoute);
-  }, [effectiveRoute, navigate, route]);
+    if (groupsState.status !== "loading" && effectiveRoute !== route) navigate(effectiveRoute);
+  }, [effectiveRoute, navigate, route, groupsState.status]);
+
+  const title = ["home", "share", "multi"].includes(effectiveRoute) ? selected?.name : undefined;
 
   return (
-    <AppShell
-      route={effectiveRoute}
-      navigate={navigate}
-      title={["home", "share", "multi"].includes(effectiveRoute) ? selected?.name : undefined}
-    >
-      {effectiveRoute === "home" || effectiveRoute === "share" ? selected ? <Share navigate={navigate} /> : <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("multi")} /> : null}
-      {effectiveRoute === "multi" ? <Groups onCreate={() => setCreateOpen(true)} /> : null}
-      {effectiveRoute === "settings" ? <Settings onEditProfile={() => navigate("profile")} /> : null}
-      {effectiveRoute === "profile" ? <Profile /> : null}
-      {effectiveRoute === "empty" ? <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => navigate("home")} /> : null}
+    <AppShell route={effectiveRoute} navigate={navigate} title={title}>
+      {groupsState.status === "loading" ? <LoadingState label="carregando grupos" /> : null}
+      {groupsState.status === "error" ? <ErrorState message={groupsState.error.message} onRetry={reloadGroups} /> : null}
+      {groupsState.status === "success" && (effectiveRoute === "home" || effectiveRoute === "share") ? (selected ? <Share navigate={navigate} /> : <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => setJoinOpen(true)} />) : null}
+      {groupsState.status === "success" && effectiveRoute === "multi" ? <Groups onCreate={() => setCreateOpen(true)} onJoin={() => setJoinOpen(true)} /> : null}
+      {groupsState.status === "success" && effectiveRoute === "settings" ? <Settings onEditProfile={() => navigate("profile")} /> : null}
+      {groupsState.status === "success" && effectiveRoute === "profile" ? <Profile /> : null}
+      {groupsState.status === "success" && effectiveRoute === "empty" ? <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => setJoinOpen(true)} /> : null}
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); navigate("share"); }} />
+      <JoinGroupModal open={joinOpen} onClose={() => setJoinOpen(false)} onJoined={() => { setJoinOpen(false); navigate("share"); }} />
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} onAction={action => { setPaletteOpen(false); if (action === "create") setCreateOpen(true); else navigate(action as Route); }} /> : null}
     </AppShell>
   );

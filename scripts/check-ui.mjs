@@ -59,6 +59,29 @@ await page.route("**/v1/auth/login", route => route.fulfill({ contentType: "appl
 await page.route("**/v1/auth/refresh", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ accessToken, refreshToken: "test-only-refresh" }) }));
 await page.route("**/v1/auth/logout", route => route.fulfill({ status: 204, body: "" }));
 
+// issue #60: grupos/convites agora vêm da API de verdade — fixture mínima
+// em memória (lista + criação + detalhe) só pra exercitar o fluxo real da
+// UI (empty -> criar -> home -> pagina de grupos), sem precisar do backend.
+const mockGroups = [];
+await page.route("**/v1/groups", route => {
+  const method = route.request().method();
+  if (method === "GET") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ groups: mockGroups }) });
+  if (method === "POST") {
+    const body = JSON.parse(route.request().postData() || "{}");
+    const group = { id: "grp_test", name: body.name, ownerId: uid, role: "owner", createdAt: new Date().toISOString() };
+    mockGroups.push(group);
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(group) });
+  }
+  return route.continue();
+});
+await page.route("**/v1/groups/*", route => {
+  if (route.request().method() !== "GET") return route.continue();
+  const id = route.request().url().split("/").pop();
+  const group = mockGroups.find(g => g.id === id);
+  if (!group) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: { code: "not_found", message: "grupo nao encontrado" } }) });
+  return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...group, members: [{ userId: uid, role: "owner" }] }) });
+});
+
 await mkdir("artifacts/ui", { recursive: true });
 async function snapshot(name) {
   await page.screenshot({ path: `artifacts/ui/${name}.png`, animations: "disabled" });
