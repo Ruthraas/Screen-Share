@@ -33,6 +33,8 @@ export interface BuildServerOptions {
   signalingPath: string;
   presence?: PresenceStore;
   rooms?: SignalingRooms;
+  /** Só para testes: intervalo do heartbeat de sinalização (issue #42) — produção usa o default (15s). */
+  signalingHeartbeatIntervalMs?: number;
   /** Só para testes que precisam inspecionar log (ex.: confirmar que SDP/ICE não vaza). */
   logger?: FastifyServerOptions["logger"];
   /** Só para testes: injeta providers OAuth falsos em vez dos reais (Google/GitHub/Discord). */
@@ -55,6 +57,7 @@ export function buildServer({
   signalingPath,
   presence,
   rooms,
+  signalingHeartbeatIntervalMs,
   logger,
   oauthProviders,
 }: BuildServerOptions): FastifyInstance {
@@ -121,7 +124,13 @@ export function buildServer({
 
   registerGroupRoutes(app, groupsRepo);
   registerPresenceRoutes(app, groupsRepo, presenceStore);
-  app.register(signalingPlugin, { path: signalingPath, verifier, groupsRepo, rooms: signalingRooms });
+  app.register(signalingPlugin, {
+    path: signalingPath,
+    verifier,
+    groupsRepo,
+    rooms: signalingRooms,
+    heartbeatIntervalMs: signalingHeartbeatIntervalMs,
+  });
 
   // Mapeia erros de domínio pro envelope de erro único do contrato (#27).
   // Erros não reconhecidos seguem pro handler padrão do Fastify (500).

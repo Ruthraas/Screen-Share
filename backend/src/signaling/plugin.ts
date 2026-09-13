@@ -19,7 +19,20 @@ export interface SignalingPluginOptions {
   verifier: TokenVerifier;
   groupsRepo: GroupsRepository;
   rooms: SignalingRooms;
+  /**
+   * Intervalo do ping/pong de heartbeat (issue #42) — detecta conexão morta
+   * sem `close` limpo (queda de rede, notebook suspenso, cabo arrancado:
+   * o TCP não avisa nada nesses casos, e sem isso a sala ficaria com um
+   * participante "fantasma" até o SO decidir encerrar o socket, o que pode
+   * levar minutos). Cada ciclo sem `pong` de volta termina a conexão —
+   * outros participantes recebem `peer-left` em até ~2x este intervalo em
+   * vez de esperar o TCP. Configurável só pra testes (produção usa o
+   * default); nunca configure isso menor que o RTT esperado dos clientes.
+   */
+  heartbeatIntervalMs?: number;
 }
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function hasTarget(message: ClientMessage): message is ClientMessage & { to: string } {
   return "to" in message;
@@ -44,6 +57,7 @@ function envelope(groupId: string, type: ServerEnvelope["type"], payload: unknow
  */
 export async function registerSignaling(app: FastifyInstance, opts: SignalingPluginOptions): Promise<void> {
   await app.register(websocketPlugin);
+  const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
 
   app.get(opts.path, { websocket: true }, async (socket: WebSocket, request: FastifyRequest) => {
     const query = request.query as Record<string, string | undefined>;
@@ -76,11 +90,28 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
       return;
     }
 
-    opts.rooms.join(groupId, uid, socket);
-    request.log.info({ groupId, uid }, "signaling: participante entrou");
+    const reconnected = opts.rooms.join(groupId, uid, socket);
+    request.log.info({ groupId, uid, reconnected }, "signaling: participante entrou");
 
     send(socket, envelope(groupId, "joined", { members: opts.rooms.membersOf(groupId) }));
-    opts.rooms.broadcast(groupId, JSON.stringify(envelope(groupId, "peer-joined", {}, { from: uid })), uid);
+    opts.rooms.broadcast(
+      groupId,
+      JSON.stringify(envelope(groupId, reconnected ? "peer-reconnected" : "peer-joined", {}, { from: uid })),
+      uid,
+    );
+
+    let alive = true;
+    socket.on("pong", () => {
+      alive = true;
+    });
+    const heartbeat = setInterval(() => {
+      if (!alive) {
+        socket.terminate();
+        return;
+      }
+      alive = false;
+      if (socket.readyState === socket.OPEN) socket.ping();
+    }, heartbeatIntervalMs);
 
     socket.on("message", (raw: Buffer) => {
       let message: ClientMessage;
@@ -95,8 +126,13 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
       // grupo enquanto conectado, a sessão para de poder enviar/receber.
       if (!opts.groupsRepo.getRole(groupId, uid)) {
         send(socket, envelope(groupId, "error", { code: "forbidden", message: "Você não é mais membro deste grupo." }));
+        // O close() abaixo dispara o handler "close" registrado mais
+        // adiante, que já faz rooms.leave() + broadcast de peer-left — não
+        // duplicar aqui (issue #42: leave() agora só broadcasta quando de
+        // fato remove a conexão atual, chamar duas vezes faria a segunda
+        // chamada, no handler "close", virar um no-op e nunca avisar os
+        // outros participantes).
         socket.close(4403, "forbidden");
-        opts.rooms.leave(groupId, uid, socket);
         return;
       }
 
@@ -123,9 +159,16 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
     });
 
     socket.on("close", () => {
-      opts.rooms.leave(groupId, uid, socket);
-      opts.rooms.broadcast(groupId, JSON.stringify(envelope(groupId, "peer-left", {}, { from: uid })));
-      request.log.info({ groupId, uid }, "signaling: participante saiu");
+      clearInterval(heartbeat);
+      // leave() só remove (e devolve true) se esta ainda for a conexão
+      // atual do uid — se uma reconexão já substituiu esta pela nova
+      // (issue #42), o close da conexão antiga não deve avisar os outros
+      // participantes de uma saída que não aconteceu de verdade.
+      const left = opts.rooms.leave(groupId, uid, socket);
+      if (left) {
+        opts.rooms.broadcast(groupId, JSON.stringify(envelope(groupId, "peer-left", {}, { from: uid })));
+      }
+      request.log.info({ groupId, uid, left }, "signaling: participante saiu");
     });
   });
 }

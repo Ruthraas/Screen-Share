@@ -67,7 +67,24 @@ export interface ServerEnvelope {
   groupId: string;
   from?: string;
   to?: string;
-  type: "joined" | "peer-joined" | "peer-left" | "offer" | "answer" | "ice-candidate" | "stream-started" | "stream-stopped" | "error";
+  /**
+   * `peer-reconnected` (issue #42) — igual a `peer-joined` (`from` é quem
+   * voltou), mas sinaliza que esse `uid` já estava na sala e a conexão foi
+   * substituída (queda de rede curta, não um participante novo). É o
+   * sinal pro cliente saber que provavelmente precisa de um ICE restart
+   * com esse peer em vez de tratar como uma entrada do zero.
+   */
+  type:
+    | "joined"
+    | "peer-joined"
+    | "peer-reconnected"
+    | "peer-left"
+    | "offer"
+    | "answer"
+    | "ice-candidate"
+    | "stream-started"
+    | "stream-stopped"
+    | "error";
   payload: unknown;
 }
 

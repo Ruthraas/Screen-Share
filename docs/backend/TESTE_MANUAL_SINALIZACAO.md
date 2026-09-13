@@ -4,27 +4,30 @@ Documento vivo (atualizar conforme o frontend for ligando as partes que
 faltam). Objetivo: dizer exatamente o que já dá pra testar de verdade hoje,
 o que ainda é só mock/local, e como validar cada parte.
 
-## 0. Antes de tudo — o que é real e o que é mock hoje (2026-09-12)
+## 0. Antes de tudo — o que é real e o que é mock hoje (atualizado 2026-09-13)
 
-Isto é o achado mais importante deste roteiro, então vai primeiro: **o app
-ainda não faz transmissão de tela de verdade nenhuma.**
+O achado mais importante deste roteiro ainda vale, só que com escopo menor
+do que antes: **o app já captura tela de verdade e já usa grupos reais,
+mas ainda não manda essa tela pra outro participante.**
 
 | Parte | Estado |
 |---|---|
 | Cadastro/login por e-mail+senha | **Real** — chama o backend (`src/services/authClient.ts`) |
 | Login OAuth (Google/GitHub/Discord) | **Real** — chama o backend, inclusive o fluxo desktop via deep link |
-| Grupos/convites (`/v1/groups`, `/v1/invites`) | Implementado e testado **no backend**; **nenhuma tela do frontend chama isso ainda** |
-| Presença (`/v1/groups/:id/presence`) | Implementado e testado **no backend**; **frontend não chama** |
-| Sinalização WebSocket (`/ws`, offer/answer/ICE) | Implementado e testado **no backend**; **frontend não tem cliente WebSocket nenhum** |
-| Captura de tela (`getDisplayMedia`) | **Não existe no código ainda** |
-| Conexão P2P (`RTCPeerConnection`) | **Não existe no código ainda** |
-| Tela "Multi-Screen" do app | Mostra dados **locais/mock** (`src/pages/MultiScreen.tsx`) — o próprio texto da tela diz isso: *"grupo local. conexoes entre participantes ainda nao estao habilitadas"* |
+| Grupos/convites (`/v1/groups`, `/v1/invites`) | **Real desde 2026-09-13** (issue #60) — `src/services/groupsApi.ts` chama o backend de verdade; `MultiScreen.tsx` mostra grupo/membros reais, "copiar convite" gera um convite de verdade |
+| Captura de tela local (Windows Graphics Capture nativo, com áudio de sistema opcional) | **Real desde 2026-09-13** (issue #8/#18/#72) — `src-tauri/src/capture.rs` + `useLocalCapture.ts`; **é 100% nativo Rust, não `getDisplayMedia`** (decisão explícita: só o app empacotado, nunca navegador). `Share.tsx` já deixa escolher fonte (grid com miniatura real), qualidade e áudio, e mostra a tela capturada no `ScreenViewer` — só que **só pra você mesmo**, o próprio app avisa: *"so voce ve sua tela por enquanto — enviar pra outros participantes ainda nao esta disponivel"* |
+| Presença (`/v1/groups/:id/presence`) | Implementado e testado **no backend**; **frontend ainda não chama** |
+| Sinalização WebSocket (`/ws`, offer/answer/ICE/peer-reconnected) | Implementado e testado **no backend** (inclusive reconexão — issue #42); **frontend ainda não tem cliente WebSocket** — issue [#71](https://github.com/Ruthraas/Screen-Share/issues/71), em aberto (só existe um doc de plano, `docs/WEBRTC_TURN_PLAN.md`, implementação não começou) |
+| Conexão P2P (`RTCPeerConnection`) | **Não existe no código ainda** — depende da #71 acima |
+| Tela "Multi-Screen" do app | Grupo/membros já são reais; o texto ainda avisa que a conexão entre participantes não está habilitada — isso é preciso, não é mock esquecido |
 
 Ou seja: **dá pra validar o backend inteiro de ponta a ponta hoje** (seção
-1), e **dá pra testar login de verdade pelo app** (seção 2). Mas **não dá
-pra testar duas pessoas compartilhando tela pelo app** ainda — falta o
-frontend ligar grupos/sinalização/captura de mídia (issue #20 e
-correlatas). A seção 3 lista exatamente o que falta pra isso ser possível.
+1), **dá pra testar login de verdade pelo app** (seção 2), e **dá pra
+testar captura de tela local e grupos reais pelo app** (você vê sua
+própria tela, cria/entra em grupos de verdade). Mas **ainda não dá pra
+testar duas pessoas vendo a tela um do outro pelo app** — falta a #71
+(cliente WebSocket + `RTCPeerConnection`, @Ruthraas). A seção 3 lista
+exatamente o que falta pra isso ser possível.
 
 ## 1. Validar o backend de ponta a ponta (automatizado, já dá pra rodar)
 
@@ -48,8 +51,11 @@ O script (`backend/scripts/testar-fluxo-completo.mjs`) registra dois
 usuários reais (Alice e Bob), Alice cria um grupo e um convite, Bob aceita,
 os dois mandam heartbeat/consultam presença, conectam no `/ws` de verdade e
 trocam `offer`/`answer`/`ice-candidate`/`stream-started` como dois clientes
-reais fariam — só que com um SDP falso no lugar de mídia de verdade (não
-tem captura de tela ainda, ver seção 0). Termina imprimindo quantos passos
+reais fariam — só que com um SDP falso no lugar de mídia de verdade (a
+captura de tela local já é real, ver seção 0, mas ainda não tem cliente
+WebRTC do lado do cliente pra gerar um SDP de verdade). Também simula uma
+reconexão (Alice cai e volta com uma conexão nova) pra provar `peer-reconnected`
+sem `peer-left` espúrio (issue #42). Termina imprimindo quantos passos
 passaram.
 
 Pra testar contra um backend rodando em outra máquina da rede (ele já
@@ -84,27 +90,31 @@ Se algo aqui falhar, é bug de verdade — essa parte não é mock.
 
 ## 3. O que falta pra testar transmissão de tela de verdade (pro Ruthraas)
 
-Pra sair do "grupo local" (`MultiScreen.tsx`) pra uma sessão real entre duas
-pessoas, falta no **frontend** (nada disso é trabalho de backend — o
-backend já suporta tudo isso, provado na seção 1):
+Duas das quatro peças já saíram do jeito antigo (~~grupos mock~~, ~~sem
+captura de tela~~ — issues #60 e #8/#18/#72, ambas landed em 2026-09-13).
+Falta só o que a issue [#71](https://github.com/Ruthraas/Screen-Share/issues/71)
+já escopa (nada disso é trabalho de backend — o backend já suporta tudo
+isso, provado na seção 1):
 
-1. **Trocar os dados mock de grupo/membros por chamadas reais** a
-   `/v1/groups`, `/v1/invites` (via `authClient`-style client autenticado,
-   igual ao que já existe pra auth).
-2. **Cliente WebSocket** que conecta em `/ws?token=...&groupId=...` e fala o
+1. **Cliente WebSocket** que conecta em `/ws?token=...&groupId=...` e fala o
    protocolo de `docs/backend/openapi.yaml`/`src/signaling/protocol.ts`
    (mensagens `offer`/`answer`/`ice-candidate`/`stream-started`/
-   `stream-stopped`, todas com `v: 1` e `correlationId`).
-3. **Captura de tela** via `getDisplayMedia` (não pode ser dentro de um
-   WebView embutido sem gesto do usuário — confirmar que o Tauri permite).
-4. **`RTCPeerConnection`** de verdade usando o `/ws` acima só pra
-   sinalização (nunca pra mídia) — trocar offer/answer/ICE reais no lugar
-   do SDP fake do script da seção 1.
-5. Só depois disso faz sentido decidir sobre TURN (#40/#41/#47, já
+   `stream-stopped`, todas com `v: 1` e `correlationId` — e agora também
+   `peer-reconnected`, issue #42: chega no lugar de `peer-joined` quando um
+   participante já estava na sala e só trocou de conexão; é o sinal pra
+   tentar ICE restart em vez de tratar como entrada nova).
+2. **`RTCPeerConnection`** de verdade usando o `/ws` acima só pra
+   sinalização (nunca pra mídia) — anexar as tracks do `MediaStream` real
+   que `useLocalCapture.ts` já produz (issue #8) como tracks de saída,
+   trocar offer/answer/ICE reais no lugar do SDP fake do script da seção 1,
+   e entregar o stream remoto pro `ScreenViewer` (contrato já pronto, só
+   consumir).
+3. Só depois disso faz sentido decidir sobre TURN (#40/#41/#47, já
    combinado que fica pra depois) — sem TURN, a conexão P2P só funciona
    entre redes que conseguem se conectar direto ou via STUN (ex.: mesma
    rede local), o que já é suficiente pra um primeiro teste real entre duas
-   máquinas na mesma LAN.
+   máquinas na mesma LAN. Plano completo de integração em
+   `docs/WEBRTC_TURN_PLAN.md`.
 
 ## 4. Achado e corrigido durante este roteiro (2026-09-12): erro desconhecido virava 500
 
