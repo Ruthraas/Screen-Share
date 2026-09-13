@@ -58,6 +58,8 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/login:
     post:
@@ -86,6 +88,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/refresh:
     post:
@@ -114,6 +118,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/logout:
     post:
@@ -136,6 +142,8 @@ paths:
           description: Refresh token revogado (ou já estava).
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/oauth/{provider}/start:
     parameters:
@@ -165,6 +173,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/oauth/{provider}/callback:
     parameters:
@@ -197,6 +207,8 @@ paths:
             sucesso vira `#access_token=...&refresh_token=...&provider=...`;
             falha vira `#error=<código>` (`invalid_state`, `missing_code`,
             `provider_error`, `provider_not_configured`, `provider_unknown`).
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /groups:
     post:
@@ -605,6 +617,21 @@ components:
                   code: "validation_error"
                   message: "O campo 'name' é obrigatório."
                   correlationId: "b3f1c2d7"
+    RateLimited:
+      description: >
+        Muitas requisições desse IP nesta rota — limite básico só nas rotas
+        públicas/sem sessão de /auth (não se aplica ao resto da API).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "rate_limited"
+                  message: "Muitas requisições. Tente novamente em 1 minute."
+                  correlationId: "b3f1c2d8"
 
   schemas:
     Error:

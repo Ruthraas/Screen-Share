@@ -366,6 +366,44 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     HTTP (start com `target=desktop` → state decodifica `target` → callback
     redireciona pro deep link `screenshare://oauth-callback`, inclusive em
     erro).
+- **`/ready` (fatia do #44) e rate limit básico em `/v1/auth/*` (2026-09-12)**
+  — preparo pra testes reais de transmissão sem TURN (#40/#41/#47 ficam pra
+  quando o teste direto de transmissão precisar deles; decisão do usuário).
+  - **`GET /ready`** (`src/routes/health.ts`) — além do `/health` (liveness,
+    nunca falha), reporta se o banco está de fato acessível
+    (`db.prepare("SELECT 1").get()`; 503 se falhar). Público, mesmo nível de
+    `/health`. Só uma fatia do #44 (sem métricas/logs estruturados ainda —
+    isso continua planejado).
+  - **Rate limit por IP** (`@fastify/rate-limit`) só nas rotas de
+    `/v1/auth/*` — as únicas HTTP públicas e sem sessão, logo as mais
+    expostas a automação (força bruta em login, criação em massa de conta,
+    hammering no `/start`/`/callback` do OAuth, que faz chamada de rede de
+    verdade pro provedor). Limites fixos (não é config de ambiente, não há
+    cenário legítimo pra variar por deploy hoje): `register` 5/min,
+    `login`/`oauth start`/`oauth callback` 10–20/min, `refresh`/`logout`
+    30/min. Resposta 429 usa o mesmo envelope de erro do resto do contrato
+    (`code: "rate_limited"`), documentado em `openapi.yaml`
+    (`components/responses/RateLimited`).
+  - **Bug real encontrado e corrigido durante esta etapa**: `config.rateLimit`
+    por rota depende do hook `onRoute` do plugin, que só existe depois que o
+    *corpo* do plugin roda — e `buildServer()` é síncrona (nunca dá `await`
+    em nenhum `register()`), então as rotas de auth eram adicionadas antes
+    do hook existir e o limite nunca entrava em vigor (reproduzido isolado:
+    4 requisições contra uma rota com `max:2` todas 200, sem nenhum header
+    `x-ratelimit-*`). Corrigido registrando `rateLimit` + `registerAuthRoutes`
+    juntos num `register()` encapsulado, com `await` interno só nesse
+    escopo — `buildServer()` continua síncrona pra quem já a chama assim
+    (todos os testes, `index.ts`).
+  - Validado: `npm test` 125/125 (5 testes novos — `/ready` ok e com banco
+    indisponível, limite de login excedido responde 429 com o envelope
+    certo, limite de `/oauth/start` independente do de login, confirmação de
+    que rotas fora de `/v1/auth/*` como `/health` não têm limite nenhum);
+    `npm run build` ok; OpenAPI válido. **Smoke test real via HTTP** contra o
+    processo (não só teste unitário): `/health`/`/ready` 200, 11 tentativas
+    reais de login com senha errada — as 10 primeiras respondem 401 normal,
+    a 11ª responde 429 com `{"error":{"code":"rate_limited",...}}`, e
+    `/health` continua 200 depois (confirma que o limite é só da rota, não
+    global).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 

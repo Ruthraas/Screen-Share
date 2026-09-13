@@ -11,6 +11,24 @@ import type { AuthIdentity } from "../auth/verifier.js";
 
 const OAUTH_STATE_TTL_MS = 10 * 60_000; // 10 min pra completar o fluxo de redirecionamento.
 
+/**
+ * Limites básicos por IP nas rotas de `/v1/auth/*` — as únicas HTTP
+ * públicas e sem autenticação do backend, logo as mais expostas a
+ * automação (força bruta em login, criação em massa de conta, hammering
+ * no `/start`/`/callback` do OAuth, que faz uma chamada de rede de verdade
+ * pro provedor). Valores fixos de propósito (mesma filosofia de
+ * `OAUTH_STATE_TTL_MS` acima) — não é config de ambiente porque não há
+ * cenário legítimo hoje que precise ajustar isso por deploy.
+ */
+const RATE_LIMITS = {
+  register: { max: 5, timeWindow: "1 minute" },
+  login: { max: 10, timeWindow: "1 minute" },
+  refresh: { max: 30, timeWindow: "1 minute" },
+  logout: { max: 30, timeWindow: "1 minute" },
+  oauthStart: { max: 20, timeWindow: "1 minute" },
+  oauthCallback: { max: 20, timeWindow: "1 minute" },
+} as const;
+
 const registerSchema = z.object({ email: z.string().email(), password: z.string().min(8).max(200) });
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1).max(200) });
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
@@ -69,7 +87,7 @@ export function registerAuthRoutes(
     return { accessToken, refreshToken: refreshValue };
   }
 
-  app.post("/v1/auth/register", async (request, reply) => {
+  app.post("/v1/auth/register", { config: { rateLimit: RATE_LIMITS.register } }, async (request, reply) => {
     const body = parseOrThrow(registerSchema, request.body);
     const passwordHash = await hashPassword(body.password, authConfig.passwordPepper);
     const user = userRepo.createWithPassword(body.email, passwordHash);
@@ -77,7 +95,7 @@ export function registerAuthRoutes(
     return issueSession({ uid: user.id, email: user.email ?? undefined });
   });
 
-  app.post("/v1/auth/login", async (request) => {
+  app.post("/v1/auth/login", { config: { rateLimit: RATE_LIMITS.login } }, async (request) => {
     const body = parseOrThrow(loginSchema, request.body);
     const genericError = () => new UnauthorizedError("E-mail ou senha inválidos.");
 
@@ -90,7 +108,7 @@ export function registerAuthRoutes(
     return issueSession({ uid: user.id, email: user.email ?? undefined });
   });
 
-  app.post("/v1/auth/refresh", async (request) => {
+  app.post("/v1/auth/refresh", { config: { rateLimit: RATE_LIMITS.refresh } }, async (request) => {
     const body = parseOrThrow(refreshSchema, request.body);
     const invalid = () => new UnauthorizedError("Refresh token inválido ou expirado.");
 
@@ -106,7 +124,7 @@ export function registerAuthRoutes(
     return issueSession({ uid: user.id, email: user.email ?? undefined });
   });
 
-  app.post("/v1/auth/logout", async (request, reply) => {
+  app.post("/v1/auth/logout", { config: { rateLimit: RATE_LIMITS.logout } }, async (request, reply) => {
     const body = parseOrThrow(logoutSchema, request.body);
     const active = userRepo.findActiveRefreshToken(hashRefreshToken(body.refreshToken));
     // Idempotente: token já revogado/inexistente também responde 204.
@@ -116,6 +134,7 @@ export function registerAuthRoutes(
 
   app.get<{ Params: { provider: string }; Querystring: { target?: string } }>(
     "/v1/auth/oauth/:provider/start",
+    { config: { rateLimit: RATE_LIMITS.oauthStart } },
     async (request, reply) => {
       const providerParam = request.params.provider;
       if (!isOAuthProviderName(providerParam)) {
@@ -147,6 +166,7 @@ export function registerAuthRoutes(
 
   app.get<{ Params: { provider: string }; Querystring: { code?: string; state?: string; error?: string } }>(
     "/v1/auth/oauth/:provider/callback",
+    { config: { rateLimit: RATE_LIMITS.oauthCallback } },
     async (request, reply) => {
       const providerParam = request.params.provider;
 

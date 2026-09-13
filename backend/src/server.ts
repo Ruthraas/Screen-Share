@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerGroupRoutes } from "./routes/groups.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
@@ -9,7 +10,7 @@ import type { TokenVerifier } from "./auth/verifier.js";
 import { UserRepository } from "./auth/userRepository.js";
 import type { OAuthProvider, OAuthProviderName } from "./auth/oauthProviders.js";
 import { errorBody } from "./http/errors.js";
-import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "./errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError, ValidationError } from "./errors.js";
 import { GroupsRepository } from "./groups/repository.js";
 import { PresenceStore } from "./presence/store.js";
 import { SignalingRooms } from "./signaling/room.js";
@@ -80,13 +81,37 @@ export function buildServer({
   // por isso entra em publicPaths do auth HTTP e faz sua própria verificação
   // dentro do plugin de signaling. "/v1/auth/" é público por natureza: são
   // as rotas que criam/renovam/destroem a própria sessão (issue #30).
+  // "/ready" também é público — só reporta saúde do banco, não expõe nada
+  // sensível.
   app.register(authPlugin, {
     verifier,
-    publicPaths: ["/health", signalingPath],
+    publicPaths: ["/health", "/ready", signalingPath],
     publicPrefixes: ["/v1/auth/"],
   });
-  registerHealthRoutes(app);
-  registerAuthRoutes(app, userRepo, authConfig, oauthProviders);
+  registerHealthRoutes(app, db);
+
+  // Rate limit só nas rotas de `/v1/auth/*` (únicas públicas e não
+  // autenticadas, logo as mais expostas a automação/abuso) — por isso
+  // `rateLimit` e `registerAuthRoutes` entram juntos num `register()`
+  // encapsulado, em vez de registrar o plugin direto no `app` raiz.
+  // Motivo: `config.rateLimit` por rota depende do hook `onRoute`, que só
+  // existe depois que o *corpo* do plugin de fato roda — e isso só é
+  // garantido esperando o `register()` (via `await` aqui dentro); sem essa
+  // espera, as rotas seriam adicionadas antes do hook existir e o limite
+  // nunca entraria em vigor (bug real, reproduzido isoladamente antes desta
+  // correção). `buildServer()` continua síncrona: quem chama só precisa
+  // esperar a instância ficar pronta no primeiro `inject()`/`listen()`,
+  // igual a antes. `errorResponseBuilder` devolve o mesmo envelope de erro
+  // do resto do contrato (#27) em vez do formato default do plugin.
+  app.register(async (authScope) => {
+    await authScope.register(rateLimit, {
+      global: false,
+      errorResponseBuilder: (_request, context) =>
+        new RateLimitedError(`Muitas requisições. Tente novamente em ${context.after}.`),
+    });
+    registerAuthRoutes(authScope, userRepo, authConfig, oauthProviders);
+  });
+
   registerGroupRoutes(app, groupsRepo);
   registerPresenceRoutes(app, groupsRepo, presenceStore);
   app.register(signalingPlugin, { path: signalingPath, verifier, groupsRepo, rooms: signalingRooms });
@@ -112,6 +137,10 @@ export function buildServer({
     }
     if (err instanceof ConflictError) {
       reply.code(409).send(errorBody("conflict", err.message, request.id));
+      return;
+    }
+    if (err instanceof RateLimitedError) {
+      reply.code(429).send(errorBody("rate_limited", err.message, request.id));
       return;
     }
     request.log.error({ err }, "erro não tratado");
