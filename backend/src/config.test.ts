@@ -24,7 +24,7 @@ test("configuração válida: usa defaults e mantém os valores explícitos", ()
     browser: "http://127.0.0.1:5173/oauth.html",
     desktop: "screenshare://oauth-callback",
   });
-  assert.deepEqual(config.cors.allowedOrigins, ["http://127.0.0.1:5173", "https://tauri.localhost"]);
+  assert.deepEqual(config.cors.allowedOrigins, ["http://127.0.0.1:5173", "https://tauri.localhost", "http://tauri.localhost"]);
 });
 
 test("OAUTH_FRONTEND_REDIRECT_URL_BROWSER/_DESKTOP customizadas substituem os defaults", () => {
