@@ -457,6 +457,8 @@ de nada vem primeiro; grupos entre `---` podem andar em paralelo):
 
 _(o que o front precisa implementar/expor, ou o que o backend precisa que o front decida, para os dois lados se conversarem — atualizar a cada entrega)_
 
+Ver [`docs/backend/TESTE_MANUAL_SINALIZACAO.md`](backend/TESTE_MANUAL_SINALIZACAO.md) (2026-09-12) pra uma tabela clara do que já é real vs. mock hoje (spoiler: grupos/convites/presença/sinalização já funcionam de ponta a ponta no backend — provado por um script automatizado, `backend/scripts/testar-fluxo-completo.mjs` — mas o frontend ainda não chama nada disso; a tela "Multi-Screen" é local/mock) e o que falta no frontend pra transmissão de tela real entre duas pessoas.
+
 Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Grupos e convites já estão implementados e testados** (presença/heartbeat ainda não — isso é #36) — dá pra integrar de verdade contra `/v1/groups` e `/v1/invites`, não é mais só o papel. Pontos que o frontend precisa saber desde já:
 
 - **Base URL/versionamento**: todas as rotas HTTP terão prefixo `/v1/...`; mudança incompatível vira `/v2/...`, `/v1` nunca muda de forma retroativa.
