@@ -106,16 +106,24 @@ backend já suporta tudo isso, provado na seção 1):
    rede local), o que já é suficiente pra um primeiro teste real entre duas
    máquinas na mesma LAN.
 
-## 4. Achado durante este roteiro (2026-09-12): erro desconhecido vira 500
+## 4. Achado e corrigido durante este roteiro (2026-09-12): erro desconhecido virava 500
 
 Rodando o script da seção 1, uma chamada `POST` sem corpo mas com
 `Content-Type: application/json` (erro no próprio script na primeira
-tentativa, corrigido) fez o Fastify recusar o corpo vazio
+tentativa) fez o Fastify recusar o corpo vazio
 (`FST_ERR_CTP_EMPTY_JSON_BODY`, um erro que já vem com `statusCode: 400`) —
-só que o `setErrorHandler` central (`src/server.ts`) só reconhece as classes
-de erro de domínio (`ValidationError`, `UnauthorizedError`, etc.) e joga
-**qualquer outra coisa pro branch de 500**, mesmo quando o próprio erro já
-diz qual status usar. Um cliente real que monte requisições assim (comum em
-wrappers de HTTP que sempre setam `Content-Type`) receberia 500 em vez de
-400. Não corrigido ainda nesta etapa — ver se vale abrir como issue
-separada ou corrigir junto da próxima mudança em `src/server.ts`.
+só que o `setErrorHandler` central (`src/server.ts`) só reconhecia as
+classes de erro de domínio (`ValidationError`, `UnauthorizedError`, etc.) e
+jogava **qualquer outra coisa pro branch de 500**, mesmo quando o próprio
+erro já dizia qual status usar. Um cliente real que monte requisições assim
+(comum em wrappers de HTTP que sempre setam `Content-Type`) receberia 500
+em vez de 400.
+
+**Corrigido**: o `setErrorHandler` agora lê `statusCode` de qualquer erro
+não reconhecido (`statusCodeOf()`) e, se for um 4xx, responde com esse
+status e `code: "bad_request"` em vez de cair no 500 genérico — só erros
+sem `statusCode` conhecido (ou 5xx de verdade) continuam virando 500.
+Validado com teste de regressão (`src/server.test.ts`) e confirmado via
+HTTP real contra o processo: `POST /v1/auth/register` com
+`Content-Type: application/json` e corpo vazio agora responde
+`400 {"error":{"code":"bad_request",...}}`.

@@ -50,6 +50,21 @@ test("GET /ready responde 503 quando o banco está indisponível", async () => {
   }
 });
 
+test("erro nativo do Fastify (ex.: corpo vazio com Content-Type: application/json) respeita o statusCode em vez de virar 500", async () => {
+  const app = build();
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error.code, "bad_request");
+  } finally {
+    await app.close();
+  }
+});
+
 test("rota inexistente sem token responde 401 (autenticação roda antes do roteamento)", async () => {
   const app = build();
   try {
