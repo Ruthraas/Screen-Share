@@ -404,6 +404,21 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     a 11ª responde 429 com `{"error":{"code":"rate_limited",...}}`, e
     `/health` continua 200 depois (confirma que o limite é só da rota, não
     global).
+- **#69 — CORS bloqueava o app desktop de verdade** (2026-09-13, achado pelo
+  @Ruthraas testando o `.exe` empacotado): o WebView2 do Tauri no Windows
+  manda `Origin: http://tauri.localhost` (HTTP puro) nas chamadas `fetch`,
+  não só `https://tauri.localhost` como estava documentado/na allowlist —
+  origem fora da allowlist faz o preflight `OPTIONS` cair direto no
+  `onRequest` do auth (401) em vez do `@fastify/cors` interceptar, então
+  toda chamada autenticada de dentro do app real falhava (mesmo com login
+  funcionando). Corrigido: default de `CORS_ALLOWED_ORIGINS`
+  (`src/config.ts`) ganhou `http://tauri.localhost` junto do `https://` que
+  já existia — os dois esquemas coexistem dependendo da versão/config do
+  WebView2, então mantém os dois por segurança em vez de trocar um pelo
+  outro. Validado: `npm test` 128/128 (3 testes novos em `cors.test.ts` —
+  origem HTTP autorizada em requisição normal, preflight OPTIONS com essa
+  origem responde 204 em vez de cair no 401 do auth, e o default de
+  `config.test.ts` atualizado).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 

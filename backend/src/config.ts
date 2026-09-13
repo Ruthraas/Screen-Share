@@ -56,11 +56,18 @@ const envSchema = z.object({
   // CORS (issue #59) — lista separada por vírgula. Padrão são as origens
   // reais deste projeto: o dev server do Vite (vite.config.ts: host
   // 127.0.0.1, porta 5173, igual ao "devUrl" do src-tauri/tauri.conf.json)
-  // e a origem do WebView do Tauri 2 empacotado no Windows
-  // (https://tauri.localhost — único alvo de bundle hoje é "nsis"). Não é
-  // segredo; existe como config só porque pode mudar sem alterar código
-  // (ex.: suportar mais uma plataforma de bundle no futuro).
-  CORS_ALLOWED_ORIGINS: z.string().min(1).default("http://127.0.0.1:5173,https://tauri.localhost"),
+  // e a origem do WebView do Tauri 2 empacotado no Windows. Precisa dos
+  // DOIS esquemas do WebView2 (issue #69, achado testando o .exe de
+  // verdade): `https://tauri.localhost` é o documentado, mas o WebView2
+  // manda `http://tauri.localhost` (sem HTTPS) em algumas versões/config —
+  // sem os dois, o preflight OPTIONS cai no onRequest de auth (401) em vez
+  // do @fastify/cors interceptar, porque a origem não bate com a
+  // allowlist. Não é segredo; existe como config só porque pode mudar sem
+  // alterar código (ex.: suportar mais uma plataforma de bundle no futuro).
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .min(1)
+    .default("http://127.0.0.1:5173,https://tauri.localhost,http://tauri.localhost"),
 });
 
 export interface OAuthProviderCredentials {
