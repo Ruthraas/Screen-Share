@@ -22,9 +22,17 @@ pub fn run() {
             secure_store::secure_store_set,
             secure_store::secure_store_get,
             secure_store::secure_store_delete,
+            capture::list_capture_sources,
+            capture::start_capture,
+            capture::stop_capture,
+            capture::capture_thumbnail,
+            audio::start_system_audio_capture,
+            audio::stop_system_audio_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ScreenShare");
 }
+mod audio;
+mod capture;
 mod desktop_auth;
 mod secure_store;

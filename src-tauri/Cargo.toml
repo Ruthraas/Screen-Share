@@ -26,3 +26,12 @@ serde_json = "1"
 open = "5"
 url = "2"
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
+# Captura de tela nativa (issue #8) — Windows Graphics Capture, sem getDisplayMedia/
+# navegador (decisao explicita do produto). So entrega frames crus; a codificacao
+# JPEG por frame (pra chegar no frontend) usa a crate `image` abaixo.
+windows-capture = "2"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.23"
+# Audio do sistema (loopback) pra compartilhar junto da tela — decisao de
+# produto de 2026-09-13, nunca microfone (ver src/audio.rs).
+wasapi = "0.24"
