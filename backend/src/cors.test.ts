@@ -7,6 +7,7 @@ import { testAuthConfig } from "./testing/testAuthConfig.js";
 
 const DEV_ORIGIN = "http://127.0.0.1:5173";
 const TAURI_ORIGIN = "https://tauri.localhost";
+const TAURI_ORIGIN_HTTP = "http://tauri.localhost";
 const UNKNOWN_ORIGIN = "https://evil.example.com";
 
 function build() {
@@ -14,7 +15,7 @@ function build() {
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
     authConfig: testAuthConfig(),
-    corsAllowedOrigins: [DEV_ORIGIN, TAURI_ORIGIN],
+    corsAllowedOrigins: [DEV_ORIGIN, TAURI_ORIGIN, TAURI_ORIGIN_HTTP],
     signalingPath: "/ws",
   });
 }
@@ -44,6 +45,39 @@ test("origem do Tauri (https://tauri.localhost) é autorizada", async () => {
     });
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers["access-control-allow-origin"], TAURI_ORIGIN);
+  } finally {
+    await app.close();
+  }
+});
+
+test("origem do Tauri sem HTTPS (http://tauri.localhost, WebView2 real — issue #69) também é autorizada", async () => {
+  const app = build();
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/groups",
+      headers: { authorization: "Bearer user:owner1", origin: TAURI_ORIGIN_HTTP },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["access-control-allow-origin"], TAURI_ORIGIN_HTTP);
+  } finally {
+    await app.close();
+  }
+});
+
+test("preflight OPTIONS com origem http://tauri.localhost é interceptado pelo CORS (204), não cai no 401 do auth", async () => {
+  const app = build();
+  try {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/groups",
+      headers: {
+        origin: TAURI_ORIGIN_HTTP,
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "authorization",
+      },
+    });
+    assert.equal(response.statusCode, 204);
   } finally {
     await app.close();
   }
