@@ -404,6 +404,58 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     a 11ª responde 429 com `{"error":{"code":"rate_limited",...}}`, e
     `/health` continua 200 depois (confirma que o limite é só da rota, não
     global).
+- **#42 — Reconexão de signaling e ICE restart** (2026-09-13, pedido pelo
+  @Ruthraas pra priorizar): dois problemas reais em `src/signaling/room.ts`
+  e `plugin.ts`, achados lendo o código antes de implementar (nenhum teste
+  cobria o caso de reconexão ainda).
+  - **`peer-reconnected`** (novo tipo no protocolo, `src/signaling/protocol.ts`):
+    quando a mesma conta abre uma nova conexão pro mesmo grupo antes da
+    antiga ter caído de verdade — `SignalingRooms.join()` já substituía a
+    conexão (uma por uid por grupo), mas sempre broadcastava `peer-joined`
+    de novo, como se fosse alguém entrando do zero. Agora `join()` devolve
+    se substituiu algo, e quem chama decide entre `peer-joined` (uid novo)
+    e `peer-reconnected` (uid voltou) — é o sinal pro cliente (issue #71,
+    RTCPeerConnection) tentar ICE restart com esse peer em vez de tratar
+    como uma entrada nova.
+  - **Bug real corrigido**: o `close` da conexão *antiga* (substituída)
+    sempre broadcastava `peer-left`, mesmo com o uid ainda conectado pela
+    conexão nova — todo reconnect gerava um `peer-left` falso pros outros
+    participantes. `SignalingRooms.leave()` agora só remove (e devolve
+    `true`) quando o socket passado ainda é o atual daquele uid; quem
+    chama só broadcasta `peer-left` quando `leave()` de fato removeu algo.
+  - **Heartbeat ping/pong** (novo, 15s por padrão — configurável só em
+    teste): sem isso, uma queda de rede sem `close` limpo (cabo arrancado,
+    notebook suspenso) deixava um participante "fantasma" na sala até o
+    SO decidir encerrar o socket, o que pode levar minutos — contradiz
+    "queda longa termina com erro claro" (critério de aceite da issue). A
+    cada ciclo sem `pong` de volta a conexão é terminada, disparando
+    `peer-left` de verdade em até ~2x o intervalo.
+  - **`SignalingRooms.leave()` chamado duas vezes no caminho de
+    revalidação mid-mensagem (#39, "não é mais membro")** — corrigido:
+    removida a chamada explícita ali, o `close` handler (já registrado
+    desde a conexão) cuida de tudo sozinho quando o `socket.close(4403)`
+    disparar o evento — evita que a primeira chamada "consuma" o `true`
+    de `leave()` e a segunda (no handler de `close`) vire no-op sem nunca
+    broadcastar `peer-left`.
+  - Validado: `npm test` 131/131 (3 testes novos — reconexão gera
+    `peer-reconnected` sem `peer-left` espúrio da conexão antiga, saída de
+    verdade depois de reconectar ainda broadcasta `peer-left` pra conexão
+    certa, conexão que não responde ao ping é encerrada e broadcasta
+    `peer-left` — este último com um cliente `ws` real em `.pause()`, que
+    para de processar frames e por isso nunca manda `pong`, simulando
+    queda de rede de verdade em vez de mockar o timer). **Smoke test real**
+    (`backend/scripts/testar-fluxo-completo.mjs`, seção 5 nova) contra um
+    servidor de verdade: Alice reconecta com uma segunda conexão WS real
+    enquanto a primeira ainda está "viva" do ponto de vista do SO — Bob
+    recebe `peer-reconnected`, a conexão antiga fechando depois não gera
+    `peer-left` espúrio, e o `peer-left` de verdade (quando Bob sai) ainda
+    chega certinho na conexão nova de Alice.
+  - **Fora de escopo aqui, fica pro cliente (#71, @Ruthraas)**: backoff de
+    reconexão do lado do cliente e "desistir e mostrar erro claro" depois
+    de várias tentativas — o backend não sabe quantas vezes o cliente já
+    tentou, só reporta o estado real da conexão (`peer-left`/
+    `peer-reconnected`) o mais rápido possível pra decisão do cliente ser
+    bem informada.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -470,9 +522,9 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 - **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
 - **CORS (#59) já configurado**: o WebView do Tauri empacotado (`https://tauri.localhost`) e o dev server do Vite (`http://127.0.0.1:5173`) já estão na allowlist — chamadas fetch/XHR do cliente devem funcionar sem precisar de proxy nem de desabilitar segurança do WebView. Se o app rodar de outra origem (porta diferente, outro esquema), o backend vai rejeitar silenciosamente (sem `Access-Control-Allow-Origin`) — avisar o lado backend pra adicionar em `CORS_ALLOWED_ORIGINS`.
 - **Grupos e convites — implementados** (`src/routes/groups.ts`, testados): `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave` (dono recebe `409` se tentar saír sem transferir/excluir antes), `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept` (idempotente pra quem já é membro; `409` se expirado/revogado/esgotado). `PATCH`/criar-revogar-convite exigem papel `owner` ou `admin`; excluir grupo exige `owner`.
-- **Presença/TURN — ainda não implementados** (payloads já definidos em `openapi.yaml`, aguardando #36/#40/#41): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`, `POST /v1/turn-credentials`.
-- **WebSocket**: cliente troca offer/answer/ICE por um protocolo versionado com `correlationId` (#38, ainda a escrever) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend).
-- **TURN**: cliente precisa pedir credenciais temporárias ao backend (#41) antes de abrir conexão — nunca usar segredo estático.
+- **Presença — implementada** (`src/routes/presence.ts`, testada): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`.
+- **WebSocket** (`/ws?token=...&groupId=...`): cliente troca `offer`/`answer`/`ice-candidate`/`stream-started`/`stream-stopped` por um protocolo versionado com `correlationId` (#38, implementado e testado) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend). **Reconexão (#42, 2026-09-13)**: se a mesma conta abrir uma nova conexão pro mesmo grupo sem a antiga ter caído ainda (queda de rede curta), os outros participantes recebem `peer-reconnected` no lugar de um `peer-joined` repetido — é o sinal pra tentar ICE restart com esse peer em vez de tratar como entrada do zero; a conexão antiga sendo substituída nunca gera um `peer-left` falso (ela é fechada pelo servidor com código `4409`). Conexão sem `close` limpo (queda sem aviso — cabo, notebook suspenso) é detectada por heartbeat ping/pong a cada 15s e limpa em até ~30s, disparando `peer-left` de verdade nesse prazo em vez de depender do timeout do TCP (que pode levar minutos).
+- **TURN — ainda não implementado** (payload já definido em `openapi.yaml`, aguardando #40/#41, decisão de infra do usuário adiada de propósito): cliente vai precisar pedir credenciais temporárias ao backend (`POST /v1/turn-credentials`) antes de abrir conexão — nunca usar segredo estático.
 - **Updater**: `#48` (frontend, exibir/instalar atualização) consome o manifesto gerado por `#49` (backend/infra) — URLs HTTPS da própria release, arquitetura x64.
 - **Dependência inversa**: `#49` (backend) só fecha depois que o frontend entregar `#5` (build/smoke test Windows) e `#22` (ícones/identidade do bundle).
 - **Dependência inversa**: `#10` (integração) só fecha depois que o frontend entregar `#20` (troca entre transmissões no cliente).
