@@ -26,7 +26,7 @@ npm run tauri build
 
 - Os PNGs em `assets/` são referências de design e nunca devem ser usados como telas, backgrounds ou atalhos visuais.
 - Siga literalmente o design system documentado no `README.md`.
-- Não adicione áudio ou microfone; o produto compartilha tela, não voz.
+- Áudio do sistema (loopback do que está tocando na tela compartilhada) é opcional, controlado pelo usuário — decisão de produto de 2026-09-13. Nunca microfone/voz: o ScreenShare continua sem chat de voz.
 - Não introduza framework visual ou valores de cor, radius e sombra fora do padrão aprovado.
 - Inclua capturas do resultado no PR quando a mudança for visual.
 
@@ -44,7 +44,7 @@ npm run tauri build
 - Uma IA deve ler integralmente a issue, este arquivo e o `README.md` antes de alterar código. Ela não pode aproveitar uma tarefa para redesenhar a interface, trocar a stack ou refatorar módulos não relacionados.
 - Alterações de frontend não implementam serviços remotos. Alterações de backend não modificam componentes, CSS ou tokens visuais.
 - A estratégia aprovada para travessia de NAT é TURN. Credenciais TURN devem ser temporárias e emitidas pelo backend; nenhum segredo mestre pode ser incluído no cliente ou no Git.
-- O ScreenShare não possui áudio ou microfone.
+- O ScreenShare compartilha áudio do sistema (opcional, junto da tela); não tem microfone nem chat de voz.
 
 ## Commits e pull requests
 

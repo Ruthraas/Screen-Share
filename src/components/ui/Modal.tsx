@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 const FOCUSABLE_SELECTOR = "input, button, textarea, select, a[href]";
 
-export function Modal({ open, children, onClose }: { open: boolean; children: ReactNode; onClose: () => void }) {
+export function Modal({ open, children, onClose, panelClassName }: { open: boolean; children: ReactNode; onClose: () => void; panelClassName?: string }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -48,7 +48,7 @@ export function Modal({ open, children, onClose }: { open: boolean; children: Re
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="modal-panel" role="dialog" aria-modal="true" ref={panelRef} onMouseDown={(event) => event.stopPropagation()}>
+      <div className={`modal-panel ${panelClassName ?? ""}`} role="dialog" aria-modal="true" ref={panelRef} onMouseDown={(event) => event.stopPropagation()}>
         {children}
       </div>
     </div>
