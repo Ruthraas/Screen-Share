@@ -50,13 +50,28 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
+// issue #23: captura tudo que a camada de log (src/services/logger.ts)
+// manda pro console real do navegador, pra validação obrigatória da issue
+// ("testar casos de erro e pesquisar os logs por tokens/e-mails de teste")
+// rodar contra o app de verdade, não só contra o `logger.ts` isolado.
+const consoleLines = [];
+page.on("console", msg => consoleLines.push(msg.text()));
 const uid = "ui-test-account";
+const testEmail = "ui-test@example.invalid";
+const wrongPassword = "wrong-password-for-log-test";
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
 // Formato do access token do backend próprio (issue #30): base64url(json) + "." + base64url(hmac).
 // A assinatura não é verificada no cliente, só decodificada — qualquer sufixo serve aqui.
-const accessToken = `${encode({ uid, email: "ui-test@example.invalid", exp: Date.now() + 3_600_000 })}.test-signature`;
-await page.route("**/v1/auth/login", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ accessToken, refreshToken: "test-only-refresh" }) }));
-await page.route("**/v1/auth/refresh", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ accessToken, refreshToken: "test-only-refresh" }) }));
+const accessToken = `${encode({ uid, email: testEmail, exp: Date.now() + 3_600_000 })}.test-signature`;
+const refreshTokenValue = "test-only-refresh";
+await page.route("**/v1/auth/login", route => {
+  const body = JSON.parse(route.request().postData() || "{}");
+  if (body.password === wrongPassword) {
+    return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "unauthorized", message: "E-mail ou senha invalidos." } }) });
+  }
+  return route.fulfill({ contentType: "application/json", body: JSON.stringify({ accessToken, refreshToken: refreshTokenValue }) });
+});
+await page.route("**/v1/auth/refresh", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ accessToken, refreshToken: refreshTokenValue }) }));
 await page.route("**/v1/auth/logout", route => route.fulfill({ status: 204, body: "" }));
 
 // issue #60: grupos/convites agora vêm da API de verdade — fixture mínima
@@ -101,7 +116,22 @@ try {
   await page.goto(`${BASE_URL}/#/login`);
   await page.waitForTimeout(3200);
   await snapshot("login");
-  await page.getByLabel("email:", { exact: true }).fill("ui-test@example.invalid");
+
+  // issue #23, validacao obrigatoria: "testar casos de erro e pesquisar os
+  // logs por tokens/e-mails de teste" — dispara um login com senha errada
+  // de proposito (o mock acima responde 401 de verdade pra essa senha) e
+  // confere que o log de erro tem contexto util (codigo) sem vazar a senha
+  // nem o e-mail usados.
+  await page.getByLabel("email:", { exact: true }).fill(testEmail);
+  await page.getByLabel("senha:", { exact: true }).fill(wrongPassword);
+  await page.getByRole("button", { name: "entrar", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  const authFailureLog = consoleLines.find(line => line.includes("[auth]") && line.includes("login falhou"));
+  assert.ok(authFailureLog, "esperava um log [auth] de 'login falhou' apos a tentativa com senha errada");
+  assert.ok(authFailureLog.includes("unauthorized"), `log de erro devia conter o codigo de erro pra ser util: ${authFailureLog}`);
+  assert.ok(!authFailureLog.includes(wrongPassword), "log de erro nao deve conter a senha de teste");
+  assert.ok(!authFailureLog.includes(testEmail), "log de erro nao deve conter o e-mail de teste");
+
   await page.getByLabel("senha:", { exact: true }).fill("test-only-password");
   await page.getByRole("button", { name: "entrar", exact: true }).click();
   await page.getByRole("heading", { name: "nenhum grupo ainda" }).waitFor();
@@ -190,7 +220,20 @@ try {
   await page.waitForTimeout(150);
   const endedAfter = await page.evaluate(() => window.__harness.endedCount());
   assert.equal(endedAfter, endedBefore + 1, "onStreamEnded dispara quando o stream termina sozinho");
+  // issue #23: a mesma trilha de log cobre "falhas de captura" — confirma
+  // que o evento nativo 'inactive' (fim inesperado do stream) tambem gera
+  // um log [capture], nao so o de auth testado acima.
+  assert.ok(consoleLines.some(line => line.includes("[capture]") && line.includes("stream encerrado")), "esperava um log [capture] quando o stream termina sozinho");
+
+  // issue #23, validacao obrigatoria: varredura final no transcript inteiro
+  // do console (nao so no log de erro isolado acima) atras de qualquer
+  // segredo/dado pessoal de teste que tenha vazado em QUALQUER log emitido
+  // durante todo o fluxo (login, oauth, grupos, captura).
+  const fullTranscript = consoleLines.join("\n");
+  for (const secret of [wrongPassword, "test-only-password", testEmail, accessToken, refreshTokenValue]) {
+    assert.ok(!fullTranscript.includes(secret), `segredo/dado de teste vazou nos logs: ${JSON.stringify(secret)}`);
+  }
 
   assert.deepEqual(errors, []);
-  console.log("PASS: identity fixture, local groups/profile/preferences, logout, route gate, command palette filter, ScreenViewer lifecycle, wave geometry and hover opacity.");
+  console.log("PASS: identity fixture, local groups/profile/preferences, logout, route gate, command palette filter, ScreenViewer lifecycle, wave geometry and hover opacity, auth error logging without leaking secrets.");
 } catch (error) { await snapshot("failure"); console.log("page", await page.locator("body").innerText()); console.log("errors", errors); throw error; } finally { await browser.close(); killDevServerTree(devServer); }
