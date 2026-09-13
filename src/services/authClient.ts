@@ -117,7 +117,10 @@ function baseUrl(): string {
   return value.replace(/\/+$/, "");
 }
 
-function apiUrl(path: string): string {
+/** Compartilhado com outros clientes HTTP autenticados (issue #60:
+ * services/groupsApi.ts) — única fonte de verdade pra resolver
+ * VITE_API_URL (com o override de teste já embutido). */
+export function apiUrl(path: string): string {
   return `${baseUrl()}${path}`;
 }
 
