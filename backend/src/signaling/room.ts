@@ -8,29 +8,45 @@ import type { WebSocket } from "ws";
 export class SignalingRooms {
   private readonly rooms = new Map<string, Map<string, WebSocket>>();
 
-  /** Uma conexão por usuário por grupo — uma nova substitui (fecha) a anterior. */
-  join(groupId: string, uid: string, socket: WebSocket): void {
+  /**
+   * Uma conexão por usuário por grupo — uma nova substitui (fecha) a
+   * anterior. Devolve `true` quando substituiu uma conexão existente
+   * (retomada de sala após queda de rede — issue #42): quem chama usa isso
+   * pra decidir entre broadcastar `peer-joined` (uid nunca esteve na sala)
+   * ou `peer-reconnected` (uid caiu e voltou, outros participantes devem
+   * tentar ICE restart com ele em vez de tratar como participante novo).
+   */
+  join(groupId: string, uid: string, socket: WebSocket): boolean {
     let room = this.rooms.get(groupId);
     if (!room) {
       room = new Map();
       this.rooms.set(groupId, room);
     }
     const existing = room.get(uid);
-    if (existing && existing !== socket && existing.readyState === existing.OPEN) {
+    const replaced = existing !== undefined && existing !== socket;
+    if (replaced && existing.readyState === existing.OPEN) {
       existing.close(4409, "replaced by a new connection");
     }
     room.set(uid, socket);
+    return replaced;
   }
 
-  leave(groupId: string, uid: string, socket: WebSocket): void {
+  /**
+   * Remove a conexão — mas só se `socket` ainda for a atual pra esse uid.
+   * Devolve `false` sem remover nada quando não for (issue #42: o `close`
+   * de uma conexão antiga, já substituída por uma reconexão via `join()`,
+   * não deve mais contar como o participante saindo — sem isso, quem
+   * chama broadcastaria um `peer-left` incorreto pra alguém que na
+   * verdade continua conectado pela conexão nova).
+   */
+  leave(groupId: string, uid: string, socket: WebSocket): boolean {
     const room = this.rooms.get(groupId);
-    if (!room) return;
-    if (room.get(uid) === socket) {
-      room.delete(uid);
-    }
+    if (!room || room.get(uid) !== socket) return false;
+    room.delete(uid);
     if (room.size === 0) {
       this.rooms.delete(groupId);
     }
+    return true;
   }
 
   membersOf(groupId: string): string[] {

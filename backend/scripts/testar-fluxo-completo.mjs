@@ -155,10 +155,27 @@ async function main() {
   const streamStartedAtBob = await bobConn.waitFor((e) => e.type === "stream-started" && e.from === aliceUid);
   ok("Bob recebe stream-started de Alice (broadcast)", !!streamStartedAtBob);
 
+  section("5. Reconexão (issue #42) — troca de rede sem perder a sala");
+  const aliceOldSocket = aliceConn.socket;
+  const aliceConn2 = await connectSignaling("Alice (reconectando)", alice.accessToken, groupId);
+  await aliceConn2.waitFor((e) => e.type === "joined");
+  const reconnectedAtBob = await bobConn.waitFor((e) => e.type === "peer-reconnected" && e.from === aliceUid);
+  ok("Bob é avisado que Alice reconectou (peer-reconnected, não peer-joined de novo)", !!reconnectedAtBob);
+
+  await new Promise((resolve) => aliceOldSocket.once("close", resolve));
+  let sawSpuriousLeft = false;
+  const spuriousCheck = (raw) => {
+    if (JSON.parse(raw.toString()).type === "peer-left") sawSpuriousLeft = true;
+  };
+  bobConn.socket.on("message", spuriousCheck);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  bobConn.socket.off("message", spuriousCheck);
+  ok("Conexão antiga de Alice fechar não gera peer-left espúrio (ela continua conectada pela nova)", !sawSpuriousLeft);
+
   bobConn.socket.close();
-  const peerLeftAtAlice = await aliceConn.waitFor((e) => e.type === "peer-left" && e.from === bobUid);
-  ok("Alice é avisada que Bob saiu (peer-left)", !!peerLeftAtAlice);
-  aliceConn.socket.close();
+  const peerLeftAtAlice = await aliceConn2.waitFor((e) => e.type === "peer-left" && e.from === bobUid);
+  ok("Alice (reconectada) é avisada que Bob saiu (peer-left)", !!peerLeftAtAlice);
+  aliceConn2.socket.close();
 
   section("Resultado");
   console.log(`${passed} passos ok, ${failed} falharam.`);
