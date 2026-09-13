@@ -270,6 +270,18 @@ export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSessi
   return new Promise<AuthSession>(() => {});
 }
 
+/**
+ * Cancela um `loginWithOAuth` em andamento no desktop (`desktop_auth.rs` já
+ * tinha o comando `desktop_oauth_cancel` desde a issue #1, mas nada na UI
+ * chamava — sem isso, um provedor que nunca completa o fluxo (ex.: app OAuth
+ * sem redirect_uri cadastrado) deixava a tela de login travada esperando os
+ * 180s de timeout, sem nenhuma saída manual). Fora do Tauri é um no-op: no
+ * navegador `loginWithOAuth` já não bloqueia nada (a página é descarregada).
+ */
+export function cancelOAuthLogin(): void {
+  if (isTauri()) void invoke("desktop_oauth_cancel");
+}
+
 /** Chamado por `src/oauth.tsx` ao carregar, com `location.hash` cru. Nunca
  * lança: em caso de erro/fragmento inválido, guarda o código em
  * `sessionStorage` pra `useSession` mostrar depois que o app recarregar. */

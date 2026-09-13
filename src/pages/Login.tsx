@@ -4,6 +4,7 @@ import { IconChevronRight, IconEye, IconEyeOff } from "../components/ui/Icons";
 import {
   AuthError,
   authErrorMessage,
+  cancelOAuthLogin,
   loginWithEmail,
   loginWithOAuth,
   registerWithEmail,
@@ -20,6 +21,7 @@ export function Login({ sessionError }: { sessionError?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthPending, setOauthPending] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export function Login({ sessionError }: { sessionError?: string }) {
     setStatus("");
     setStatus("continue o login na janela do navegador");
     setLoading(true);
+    setOauthPending(true);
 
     try {
       await loginWithOAuth(provider);
@@ -72,18 +75,18 @@ export function Login({ sessionError }: { sessionError?: string }) {
       setStatus(authErrorMessage(error));
     } finally {
       setLoading(false);
+      setOauthPending(false);
     }
+  }
+
+  function cancelProvider() {
+    cancelOAuthLogin();
+    setStatus("login cancelado");
   }
 
   return (
     <div className="login-stage">
       <section className={`terminal-window login-window ${isSignup ? "is-signup" : ""}`}>
-        <header className="terminal-titlebar">
-          <span />
-          <span />
-          <span />
-          <p>screenshare - {isSignup ? "cadastro" : "login"}</p>
-        </header>
         <form className="terminal-body" onSubmit={event => { event.preventDefault(); void submitEmailAuth(); }}>
           <div className="terminal-header" style={{ opacity: formVisible ? 1 : 0, transform: formVisible ? 'translateY(0)' : 'translateY(-10px)', transition: 'opacity 500ms ease-out 200ms, transform 500ms ease-out 200ms' }}>
             <p className="terminal-line muted">$ whoami</p>
@@ -176,6 +179,11 @@ export function Login({ sessionError }: { sessionError?: string }) {
             </button>
           </div>
           {status ? <p className="auth-status" role="alert" style={{ opacity: formVisible ? 1 : 0, transition: 'opacity 300ms ease-out 800ms' }}>{status}</p> : null}
+          {oauthPending ? (
+            <button className="auth-switch" type="button" onClick={cancelProvider}>
+              cancelar login
+            </button>
+          ) : null}
           <button className="auth-switch" type="button" disabled={loading} onClick={() => setMode(isSignup ? "login" : "signup")} style={{ opacity: formVisible ? 1 : 0, transform: formVisible ? 'translateY(0)' : 'translateY(8px)', transition: 'opacity 400ms ease-out 800ms, transform 400ms ease-out 800ms' }}>
             {isSignup ? "ja tem uma conta? entrar" : "nao tem uma conta? cadastre-se"}
           </button>

@@ -57,7 +57,7 @@ export function AppShell({
     <div className="profile-menu" role="menu" ref={dropdownRef}>
       <div className="profile-menu-header">
         <Avatar user={currentUser} size="md" />
-        <div>
+        <div className="profile-menu-identity">
           <strong>{currentUser.name}</strong>
           <span>{currentUser.email}</span>
         </div>
@@ -77,10 +77,10 @@ export function AppShell({
     <div className="app-window app-window--wide">
       <aside className="sidebar">
         <div className="nav-stack">
-          <button className={`nav-button ${route === "home" || route === "share" ? "is-active" : ""}`} onClick={() => navigate("home")} title="inicio">
+          <button className={`nav-button ${route === "home" || route === "share" || route === "empty" ? "is-active" : ""}`} onClick={() => navigate("home")} title="inicio">
             <IconHome />
           </button>
-          <button className={`nav-button ${(route === "empty" || route === "multi") ? "is-active" : ""}`} onClick={() => navigate("multi")} title="grupos">
+          <button className={`nav-button ${route === "multi" ? "is-active" : ""}`} onClick={() => navigate("multi")} title="grupos">
             <IconUsers />
           </button>
           <button className={`nav-button ${route === "settings" || route === "profile" ? "is-active" : ""}`} onClick={() => navigate("settings")} title="configuracoes">
