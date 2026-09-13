@@ -18,6 +18,13 @@ import signalingPlugin from "./signaling/plugin.js";
 import type { AppConfig } from "./config.js";
 import type Database from "better-sqlite3";
 
+/** Lê `statusCode` de um erro desconhecido (ex.: FastifyError nativo) sem assumir sua forma. */
+function statusCodeOf(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null || !("statusCode" in err)) return undefined;
+  const value = (err as { statusCode: unknown }).statusCode;
+  return typeof value === "number" ? value : undefined;
+}
+
 export interface BuildServerOptions {
   verifier: TokenVerifier;
   db: Database.Database;
@@ -141,6 +148,18 @@ export function buildServer({
     }
     if (err instanceof RateLimitedError) {
       reply.code(429).send(errorBody("rate_limited", err.message, request.id));
+      return;
+    }
+    // Erro do próprio Fastify (não é uma classe de domínio nossa) que já
+    // carrega um status 4xx — ex.: corpo vazio com Content-Type: application/json
+    // (FST_ERR_CTP_EMPTY_JSON_BODY), JSON malformado, payload grande demais.
+    // Isso é erro de quem chamou, não nosso: respeita o status em vez de
+    // cair no 500 genérico abaixo (achado real testando o fluxo completo
+    // contra um servidor de verdade — ver docs/backend/TESTE_MANUAL_SINALIZACAO.md).
+    const clientErrorStatus = statusCodeOf(err);
+    if (clientErrorStatus !== undefined && clientErrorStatus >= 400 && clientErrorStatus < 500) {
+      request.log.warn({ err }, "erro de requisição não mapeado por uma classe de domínio");
+      reply.code(clientErrorStatus).send(errorBody("bad_request", "Requisição inválida.", request.id));
       return;
     }
     request.log.error({ err }, "erro não tratado");
