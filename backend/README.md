@@ -54,7 +54,9 @@ preciso rodar `npm run migrate` à parte para simplesmente subir o serviço.
 
 ## Endpoints disponíveis
 
-- `GET /health` — público, `200 { "status": "ok" }`.
+- `GET /health` — público, `200 { "status": "ok" }` (liveness, nunca falha).
+- `GET /ready` — público, `200 { "status": "ok", "checks": { "database": "ok" } }`
+  ou `503` se o banco estiver inacessível (readiness).
 - `/v1/groups`, `/v1/invites` — grupos e convites completos (issues #35,
   #32, #33, #34). Exigem `Authorization: Bearer <token>`.
 - Presença (`/v1/groups/:id/presence*`) e credenciais TURN

@@ -166,6 +166,51 @@ test("logout revoga o refresh token; logout de novo (idempotente) ainda responde
   }
 });
 
+// --- rate limit ---------------------------------------------------------------
+
+test("login tem rate limit por IP: excede o máximo responde 429 com o envelope de erro do contrato", async () => {
+  const app = build();
+  try {
+    await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
+
+    let last;
+    for (let i = 0; i < 11; i++) {
+      last = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.com", password: "errada" } });
+    }
+    assert.equal(last!.statusCode, 429);
+    assert.equal(last!.json().error.code, "rate_limited");
+    assert.ok(last!.json().error.correlationId);
+  } finally {
+    await app.close();
+  }
+});
+
+test("oauth start tem rate limit por IP independente do de login", async () => {
+  const app = build();
+  try {
+    let last;
+    for (let i = 0; i < 21; i++) {
+      last = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
+    }
+    assert.equal(last!.statusCode, 429);
+  } finally {
+    await app.close();
+  }
+});
+
+test("rotas fora de /v1/auth/* não têm rate limit (ex.: /health)", async () => {
+  const app = build();
+  try {
+    let last;
+    for (let i = 0; i < 30; i++) {
+      last = await app.inject({ method: "GET", url: "/health" });
+    }
+    assert.equal(last!.statusCode, 200);
+  } finally {
+    await app.close();
+  }
+});
+
 // --- OAuth -------------------------------------------------------------------
 
 test("oauth start com provedor não configurado responde 404", async () => {

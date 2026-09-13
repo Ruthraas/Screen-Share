@@ -34,3 +34,10 @@ export class UnauthorizedError extends Error {
     this.name = "UnauthorizedError";
   }
 }
+
+export class RateLimitedError extends Error {
+  constructor(message = "Muitas requisições. Tente novamente mais tarde.") {
+    super(message);
+    this.name = "RateLimitedError";
+  }
+}
