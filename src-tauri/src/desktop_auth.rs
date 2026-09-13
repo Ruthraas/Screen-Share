@@ -17,6 +17,28 @@ fn pending() -> &'static Mutex<Option<mpsc::Sender<String>>> {
     PENDING.get_or_init(|| Mutex::new(None))
 }
 
+/// Log de diagnóstico da navegação desktop (issue #23) — nunca imprime a
+/// URL/fragmento cru de retorno do OAuth (carrega `access_token`/
+/// `refresh_token` em texto puro), só `provider` e códigos de erro seguros
+/// (os mesmos 5 do backend + os gerados aqui, documentados em
+/// `authClient.ts`/`CLIENT_ONLY_MESSAGES`). `debug` só imprime em build de
+/// debug (critério de aceite: "producao nao exibe debug excessivo");
+/// `info`/`warn` sempre imprimem, iguais ao nível equivalente no lado JS.
+fn log_debug(event: &str, provider: &str) {
+    #[cfg(debug_assertions)]
+    eprintln!("[desktop] debug {event} provider={provider}");
+    #[cfg(not(debug_assertions))]
+    let _ = (event, provider);
+}
+
+fn log_info(event: &str, provider: &str) {
+    eprintln!("[desktop] info {event} provider={provider}");
+}
+
+fn log_warn(event: &str, provider: &str, code: &str) {
+    eprintln!("[desktop] warn {event} provider={provider} code={code}");
+}
+
 /// Chamado pelo plugin `single-instance` (issue #1): no Windows, clicar num
 /// link `screenshare://...` relança o app com a URL como argumento de linha
 /// de comando em vez de emitir evento do plugin `deep-link` (que só
@@ -25,6 +47,15 @@ fn pending() -> &'static Mutex<Option<mpsc::Sender<String>>> {
 /// do OAuth em `login()`.
 pub fn handle_second_instance_argv(argv: Vec<String>) {
     if let Some(url) = argv.iter().find(|arg| arg.starts_with(SCHEME)) {
+        // Nunca loga `url`: é o retorno do OAuth, carrega os tokens em texto
+        // puro no fragmento. Só registra que um deep link chegou e se havia
+        // alguém esperando por ele (login em andamento) ou não (clique
+        // órfão/repetido no link).
+        #[cfg(debug_assertions)]
+        {
+            let had_pending = pending().lock().unwrap().is_some();
+            eprintln!("[desktop] debug deep-link-received had_pending={had_pending}");
+        }
         if let Some(sender) = pending().lock().unwrap().as_ref() {
             let _ = sender.send(url.clone());
         }
@@ -73,6 +104,7 @@ fn extract_oauth_result(url: &str) -> Result<OAuthResult, String> {
 fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
     let (tx, rx) = mpsc::channel::<String>();
     *pending().lock().unwrap() = Some(tx);
+    log_debug("start", &provider);
 
     // `target=desktop`: preparado pro backend poder escolher entre mais de
     // um OAUTH_FRONTEND_REDIRECT_URL configurado (hoje só existe um por vez,
@@ -81,21 +113,34 @@ fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
     let start_url = format!("{}/v1/auth/oauth/{provider}/start?target=desktop", api_url.trim_end_matches('/'));
     if open::that(start_url).is_err() {
         *pending().lock().unwrap() = None;
+        log_warn("browser-open-failed", &provider, "desktop-browser-failed");
         return Err("desktop-browser-failed".into());
     }
 
     let deadline = Instant::now() + Duration::from_secs(180);
     let outcome = loop {
         if CANCEL.swap(false, Ordering::SeqCst) {
+            log_info("cancelled", &provider);
             break Err("desktop-auth-cancelled".to_string());
         }
         if Instant::now() >= deadline {
+            log_warn("timeout", &provider, "desktop-auth-timeout");
             break Err("desktop-auth-timeout".to_string());
         }
         match rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(url) => break extract_oauth_result(&url),
+            Ok(url) => {
+                let result = extract_oauth_result(&url);
+                match &result {
+                    Ok(_) => log_info("completed", &provider),
+                    Err(code) => log_warn("provider-error", &provider, code),
+                }
+                break result;
+            }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break Err("desktop-auth-failed".to_string()),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                log_warn("channel-disconnected", &provider, "desktop-auth-failed");
+                break Err("desktop-auth-failed".to_string());
+            }
         }
     };
 

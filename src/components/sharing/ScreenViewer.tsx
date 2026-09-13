@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { User } from "../../data/types";
 import { Avatar } from "../ui/Avatar";
 import { IconMinimize } from "../ui/Icons";
+import { log } from "../../services/logger";
 import { watchStreamEnded } from "./streamLifecycle";
 
 export function ScreenViewer({
@@ -28,8 +29,22 @@ export function ScreenViewer({
 
   useEffect(() => {
     const element = video.current;
-    if (element) element.srcObject = stream ?? null;
-    const stopWatching = watchStreamEnded(stream, () => onStreamEnded?.());
+    if (element) {
+      element.srcObject = stream ?? null;
+      if (stream) {
+        // autoPlay já cobre o caso feliz; chamar play() explicitamente só
+        // pra ter uma promise que dá pra capturar e logar quando falha
+        // (ex.: politica de autoplay do WebView2 rejeitando) — issue #23,
+        // "falhas de captura".
+        element.play().catch(error => {
+          log.warn("capture", "falha ao iniciar reproducao do stream", { name: error?.name });
+        });
+      }
+    }
+    const stopWatching = watchStreamEnded(stream, () => {
+      log.warn("capture", "stream encerrado de forma inesperada (fora dos controles do app)");
+      onStreamEnded?.();
+    });
     return () => {
       stopWatching();
       if (element) element.srcObject = null;
@@ -39,7 +54,17 @@ export function ScreenViewer({
   return (
     <section className="screen-viewer" aria-label={"tela de " + user.name}>
       <div className="stream-stage">
-        {stream ? <video ref={video} autoPlay playsInline muted /> : <div className="stream-placeholder" />}
+        {stream ? (
+          <video
+            ref={video}
+            autoPlay
+            playsInline
+            muted
+            onError={() => log.warn("capture", "elemento de video reportou erro de reproducao")}
+          />
+        ) : (
+          <div className="stream-placeholder" />
+        )}
         <span className="viewer-label">{user.name}</span>
         <button className="viewer-minimize nav-button" title="minimizar" onClick={onMinimize}><IconMinimize /></button>
       </div>

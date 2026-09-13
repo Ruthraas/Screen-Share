@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { log } from "./logger.ts";
 
 /**
  * O backend (issue #30) nunca devolve um objeto de usuário — só o par de
@@ -186,17 +187,29 @@ function toSession(accessToken: string | undefined, refreshToken: string | undef
 }
 
 export async function registerWithEmail(email: string, password: string): Promise<AuthSession> {
-  const data = await postJson("/v1/auth/register", { email, password });
-  const session = toSession(data.accessToken, data.refreshToken);
-  await persistSession(session);
-  return session;
+  try {
+    const data = await postJson("/v1/auth/register", { email, password });
+    const session = toSession(data.accessToken, data.refreshToken);
+    await persistSession(session);
+    log.info("auth", "cadastro concluido");
+    return session;
+  } catch (error) {
+    log.warn("auth", "cadastro falhou", { code: error instanceof AuthError ? error.code : "unknown" });
+    throw error;
+  }
 }
 
 export async function loginWithEmail(email: string, password: string): Promise<AuthSession> {
-  const data = await postJson("/v1/auth/login", { email, password });
-  const session = toSession(data.accessToken, data.refreshToken);
-  await persistSession(session);
-  return session;
+  try {
+    const data = await postJson("/v1/auth/login", { email, password });
+    const session = toSession(data.accessToken, data.refreshToken);
+    await persistSession(session);
+    log.info("auth", "login concluido");
+    return session;
+  } catch (error) {
+    log.warn("auth", "login falhou", { code: error instanceof AuthError ? error.code : "unknown" });
+    throw error;
+  }
 }
 
 let refreshInFlight: Promise<AuthSession> | null = null;
@@ -216,16 +229,24 @@ export function refreshSession(refreshToken: string): Promise<AuthSession> {
 }
 
 async function doRefreshSession(refreshToken: string): Promise<AuthSession> {
-  const data = await postJson("/v1/auth/refresh", { refreshToken });
-  const session = toSession(data.accessToken, data.refreshToken);
-  await persistSession(session);
-  return session;
+  try {
+    const data = await postJson("/v1/auth/refresh", { refreshToken });
+    const session = toSession(data.accessToken, data.refreshToken);
+    await persistSession(session);
+    return session;
+  } catch (error) {
+    // "warn", nao "error": refresh falhar e rotina (token expirado apos
+    // muito tempo offline), nao uma falha inesperada do app.
+    log.warn("auth", "renovacao de sessao falhou", { code: error instanceof AuthError ? error.code : "unknown" });
+    throw error;
+  }
 }
 
 export async function logout(): Promise<void> {
   const refreshToken = currentSession?.tokens.refreshToken ?? null;
   await clearPersistedSession();
   setSession(null, null);
+  log.info("auth", "logout local concluido");
   if (!refreshToken) return;
   try {
     await fetch(apiUrl("/v1/auth/logout"), {
@@ -235,6 +256,7 @@ export async function logout(): Promise<void> {
     });
   } catch {
     // O logout local já aconteceu; falha ao revogar no backend não deve travar o usuário.
+    log.warn("auth", "revogacao do refresh token no backend falhou (sessao local ja foi encerrada)");
   }
 }
 
@@ -254,15 +276,22 @@ type DesktopOAuthResult = { accessToken?: string; refreshToken?: string; error?:
  */
 export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSession> {
   if (isTauri()) {
+    log.debug("desktop", "abrindo navegador para fluxo oauth", { provider });
     let result: DesktopOAuthResult;
     try {
       result = await invoke<DesktopOAuthResult>("desktop_oauth_login", { provider, apiUrl: baseUrl() });
     } catch (error) {
-      throw new AuthError(typeof error === "string" ? error : "desktop-auth-failed");
+      const code = typeof error === "string" ? error : "desktop-auth-failed";
+      log.warn("desktop", "fluxo oauth desktop falhou", { provider, code });
+      throw new AuthError(code);
     }
-    if (result.error) throw new AuthError(result.error);
+    if (result.error) {
+      log.warn("desktop", "provedor oauth retornou erro", { provider, code: result.error });
+      throw new AuthError(result.error);
+    }
     const session = toSession(result.accessToken, result.refreshToken);
     await persistSession(session);
+    log.info("desktop", "fluxo oauth desktop concluido", { provider });
     return session;
   }
 
@@ -279,7 +308,10 @@ export async function loginWithOAuth(provider: OAuthProvider): Promise<AuthSessi
  * navegador `loginWithOAuth` já não bloqueia nada (a página é descarregada).
  */
 export function cancelOAuthLogin(): void {
-  if (isTauri()) void invoke("desktop_oauth_cancel");
+  if (isTauri()) {
+    log.debug("desktop", "cancelamento de oauth solicitado pelo usuario");
+    void invoke("desktop_oauth_cancel");
+  }
 }
 
 /** Chamado por `src/oauth.tsx` ao carregar, com `location.hash` cru. Nunca
@@ -292,6 +324,7 @@ export async function completeOAuthFromFragment(hash: string): Promise<void> {
   const refreshToken = params.get("refresh_token");
 
   if (error) {
+    log.warn("desktop", "provedor oauth retornou erro (fluxo navegador)", { code: error });
     setPendingOAuthError(error);
     return;
   }
@@ -299,7 +332,9 @@ export async function completeOAuthFromFragment(hash: string): Promise<void> {
   try {
     const session = toSession(accessToken ?? undefined, refreshToken ?? undefined);
     await persistSession(session);
+    log.info("desktop", "fluxo oauth via navegador concluido");
   } catch {
+    log.warn("desktop", "fragmento de retorno do oauth malformado");
     setPendingOAuthError("malformed-response");
   }
 }
@@ -379,7 +414,10 @@ export async function restoreSession(): Promise<AuthSession | null> {
   }
   try {
     return await refreshSession(refreshToken);
-  } catch {
+  } catch (error) {
+    log.info("auth", "restauracao de sessao na abertura falhou, exigindo novo login", {
+      code: error instanceof AuthError ? error.code : "unknown",
+    });
     await clearPersistedSession();
     setSession(null, pendingOAuthError ?? "session-expired");
     return null;
