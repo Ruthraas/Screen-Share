@@ -1,6 +1,6 @@
 import { Button } from "../ui/Button";
 import { IconAlertTriangle, IconDownload, IconX } from "../ui/Icons";
-import { useAppUpdate } from "./useAppUpdate";
+import { useUpdate } from "./UpdateProvider";
 import { summarizeDownloadProgress, summarizeReleaseNotes } from "./updateFormat";
 
 /**
@@ -11,7 +11,7 @@ import { summarizeDownloadProgress, summarizeReleaseNotes } from "./updateFormat
  * só quando há algo pra decidir.
  */
 export function UpdateBanner() {
-  const { state, startUpdate, dismiss, retry } = useAppUpdate();
+  const { state, startUpdate, dismiss, retry } = useUpdate();
 
   if (state.status === "idle" || state.status === "checking" || state.status === "dismissed") return null;
 

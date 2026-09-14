@@ -6,6 +6,7 @@ import { Avatar } from "../ui/Avatar";
 import { BrandMark, IconHome, IconSettings, IconUsers, IconLogout, IconUser } from "../ui/Icons";
 import { PixelWave } from "./PixelWave";
 import { getSharingActive, subscribeSharingActive } from "../../services/sharingState";
+import { UpdateCheckButton } from "../update/UpdateCheckButton";
 import type { Route } from "../../data/types";
 
 /** A ondinha decorativa distrai enquanto a tela está sendo compartilhada de
@@ -96,6 +97,7 @@ export function AppShell({
           <button className={`nav-button ${route === "settings" || route === "profile" ? "is-active" : ""}`} onClick={() => navigate("settings")} title="configuracoes">
             <IconSettings />
           </button>
+          <UpdateCheckButton />
         </div>
         <button ref={avatarButtonRef} className="avatar-button" onClick={() => setProfileOpen(!profileOpen)} title="perfil" aria-expanded={profileOpen} aria-haspopup="true">
           <Avatar user={currentUser} />

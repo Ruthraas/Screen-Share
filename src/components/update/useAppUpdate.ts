@@ -99,5 +99,5 @@ export function useAppUpdate() {
     else void checkNow();
   }
 
-  return { state, startUpdate, dismiss, retry };
+  return { state, startUpdate, dismiss, retry, check: () => void checkNow() };
 }
