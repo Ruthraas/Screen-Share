@@ -3,12 +3,15 @@ import { log } from "./logger.ts";
 
 /**
  * O backend (issue #30) nunca devolve um objeto de usuário — só o par de
- * tokens. `id`/`email` vêm de decodificar o próprio access token (payload
- * assinado, formato `base64url(json).base64url(hmac)`, ver
- * `backend/src/auth/signedPayload.ts`); não existe nome nem foto no
- * contrato, então o perfil exibido é sempre local (`localData.ts`).
+ * tokens. `id`/`email`/`displayName`/`avatarUrl` vêm de decodificar o
+ * próprio access token (payload assinado, formato
+ * `base64url(json).base64url(hmac)`, ver `backend/src/auth/signedPayload.ts`).
+ * `displayName`/`avatarUrl` só existem pra quem já logou via OAuth alguma
+ * vez (issue #70, backend) — nulos pra conta só-senha, caso em que o
+ * perfil exibido continua caindo pro que está salvo localmente
+ * (`localData.ts`) ou pro e-mail.
  */
-export type SessionUser = { id: string; email?: string };
+export type SessionUser = { id: string; email?: string; displayName?: string; avatarUrl?: string };
 
 export type AuthTokens = {
   accessToken: string;
@@ -47,7 +50,7 @@ const listeners = new Set<SessionListener>();
  * verdade é sempre do backend). Formato: `base64url(json).base64url(hmac)`,
  * não é JWT (não tem header, e o `exp` já vem em milissegundos, não em
  * segundos). */
-function decodeAccessTokenPayload(token: string): { uid: string; email?: string; exp: number } | null {
+function decodeAccessTokenPayload(token: string): { uid: string; email?: string; displayName?: string; avatarUrl?: string; exp: number } | null {
   const [body] = token.split(".");
   if (!body) return null;
   try {
@@ -181,7 +184,7 @@ function toSession(accessToken: string | undefined, refreshToken: string | undef
     throw new AuthError("malformed-response");
   }
   return {
-    user: { id: payload.uid, email: payload.email },
+    user: { id: payload.uid, email: payload.email, displayName: payload.displayName, avatarUrl: payload.avatarUrl },
     tokens: { accessToken, refreshToken },
   };
 }

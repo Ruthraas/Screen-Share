@@ -62,7 +62,12 @@ const wrongPassword = "wrong-password-for-log-test";
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
 // Formato do access token do backend próprio (issue #30): base64url(json) + "." + base64url(hmac).
 // A assinatura não é verificada no cliente, só decodificada — qualquer sufixo serve aqui.
-const accessToken = `${encode({ uid, email: testEmail, exp: Date.now() + 3_600_000 })}.test-signature`;
+// displayName/avatarUrl (issue #70, backend): só existem pra quem já logou
+// via OAuth alguma vez — nulos aqui seriam o caso comum (conta só-senha),
+// mas incluídos de propósito nesta fixture pra validar a prioridade real
+// (nome do provedor OAuth até o usuário salvar um nome local por cima).
+const oauthDisplayName = "Nome Do Provedor OAuth";
+const accessToken = `${encode({ uid, email: testEmail, displayName: oauthDisplayName, avatarUrl: "https://example.invalid/avatar.png", exp: Date.now() + 3_600_000 })}.test-signature`;
 const refreshTokenValue = "test-only-refresh";
 await page.route("**/v1/auth/login", route => {
   const body = JSON.parse(route.request().postData() || "{}");
@@ -187,6 +192,9 @@ try {
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--wave-front").trim()), "#B9D2BE");
   await page.getByTitle("perfil", { exact: true }).click();
   await page.getByRole("menuitem", { name: "perfil", exact: true }).click();
+  // issue #70: nome do provedor OAuth é o padrão até o usuário salvar um
+  // nome local por cima (prioridade real, não só "não quebrou").
+  assert.equal(await page.getByLabel("nome:", { exact: true }).inputValue(), oauthDisplayName, "nome do provedor OAuth deveria ser o padrao antes de qualquer nome local salvo");
   await page.getByLabel("nome:", { exact: true }).fill("nome salvo");
   await page.getByLabel("bio:", { exact: true }).fill("bio local de teste");
   await page.getByRole("button", { name: "salvar", exact: true }).click();
@@ -194,6 +202,7 @@ try {
   await wave(); await snapshot("profile");
   await page.reload(); await page.waitForTimeout(3400);
   assert.equal(await page.getByLabel("bio:", { exact: true }).inputValue(), "bio local de teste");
+  assert.equal(await page.getByLabel("nome:", { exact: true }).inputValue(), "nome salvo", "nome local salvo deveria continuar vencendo o do provedor OAuth apos reload");
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
   for (let i = 0; i < 30; i++) {
     await page.mouse.move(16 + (i % 3) * 12, 25 + (i % 5) * 20);
