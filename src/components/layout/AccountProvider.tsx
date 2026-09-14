@@ -81,8 +81,12 @@ export function AccountProvider({ account, children }: { account: SessionUser; c
     persistDeviceTheme(data.preferences.theme);
   }, [data.preferences.theme]);
 
-  const displayName = data.profile.name || account.email?.split("@")[0] || "usuario";
-  const user: User = { id: account.id, name: displayName, email: account.email, initials: displayName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(), online: true, current: true, photoURL: data.profile.photoURL };
+  // Prioridade: nome/foto salvos localmente (usuário editou em "perfil") >
+  // nome/foto do provedor OAuth (issue #70, backend — só existe pra quem
+  // já logou via Google/GitHub/Discord) > local-part do e-mail > fallback.
+  const displayName = data.profile.name || account.displayName || account.email?.split("@")[0] || "usuario";
+  const photoURL = data.profile.photoURL || account.avatarUrl;
+  const user: User = { id: account.id, name: displayName, email: account.email, initials: displayName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(), online: true, current: true, photoURL };
 
   async function loadGroups() {
     setGroupsState({ status: "loading" });
