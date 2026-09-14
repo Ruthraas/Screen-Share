@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useAccount } from "../components/layout/AccountProvider";
 import { EmptyPanel } from "../components/ui/AsyncState";
 import { Button } from "../components/ui/Button";
-import { MultiScreen } from "./MultiScreen";
 import type { Group } from "../data/types";
 
 function GroupItem({ group, onClick, isSelected, onLeave, onDelete, busy }: { group: Group; onClick: () => void; isSelected: boolean; onLeave: () => void; onDelete: () => void; busy: boolean }) {
@@ -29,9 +28,21 @@ function GroupItem({ group, onClick, isSelected, onLeave, onDelete, busy }: { gr
   );
 }
 
-export function Groups({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => void }) {
+/**
+ * Lista de grupos — só isso (issue de layout: antes essa página tinha,
+ * empilhada embaixo, a sala inteira do grupo selecionado — confuso, dava a
+ * impressão de "clicar num card e a coisa só aparecer mais embaixo" em vez
+ * de entrar em outro lugar). Selecionar um grupo agora navega pra rota
+ * "room" dedicada (`MultiScreen`, via `onOpenRoom`), como entrar numa sala.
+ */
+export function Groups({ onCreate, onJoin, onOpenRoom }: { onCreate: () => void; onJoin: () => void; onOpenRoom: () => void }) {
   const { groups, selected, selectGroup, leaveGroup, deleteGroup } = useAccount();
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  function openRoom(group: Group) {
+    selectGroup(group.id);
+    onOpenRoom();
+  }
 
   async function handleLeave(group: Group) {
     if (!window.confirm(`sair do grupo "${group.name}"?`)) return;
@@ -68,7 +79,7 @@ export function Groups({ onCreate, onJoin }: { onCreate: () => void; onJoin: () 
             <GroupItem
               key={group.id}
               group={group}
-              onClick={() => selectGroup(group.id)}
+              onClick={() => openRoom(group)}
               isSelected={selected?.id === group.id}
               busy={busyId === group.id}
               onLeave={() => void handleLeave(group)}
@@ -79,7 +90,6 @@ export function Groups({ onCreate, onJoin }: { onCreate: () => void; onJoin: () 
       ) : (
         <EmptyPanel title="voce ainda nao tem nenhum grupo" />
       )}
-      {selected ? <MultiScreen /> : null}
     </section>
   );
 }

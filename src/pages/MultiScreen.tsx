@@ -5,13 +5,22 @@ import { useAccount } from "../components/layout/AccountProvider";
 import { useRtc } from "../components/rtc/RtcProvider";
 import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { Button } from "../components/ui/Button";
+import { IconChevronLeft } from "../components/ui/Icons";
 
 /**
- * Issue #71: `sharingPeers`/`remoteStreams` vêm de verdade da malha de
- * `RTCPeerConnection` (`useGroupConnections.ts`), não mais do campo estático
- * `member.sharing` (nunca era definido antes desta issue — sempre `undefined`).
+ * Sala de UM grupo especifico (rota "room", separada da lista de grupos —
+ * antes as duas ficavam empilhadas na mesma pagina, confuso: parecia que
+ * clicar num grupo so "revelava mais coisa embaixo" em vez de entrar em
+ * outro lugar). O nome do grupo ja aparece na topbar do `AppShell`
+ * (`title`), entao o cabecalho aqui nao repete — so o essencial da sala:
+ * voltar, contagem de transmissoes, convite.
+ *
+ * `sharingPeers`/`remoteStreams` vêm de verdade da malha de
+ * `RTCPeerConnection` (`useGroupConnections.ts`), não do campo estático
+ * `member.sharing` (nunca era definido antes da issue #71 — sempre
+ * `undefined`).
  */
-export function MultiScreen() {
+export function MultiScreen({ onBack }: { onBack: () => void }) {
   const { selected, createInviteLink } = useAccount();
   const { remoteStreams, sharingPeers, peerQuality, signalingStatus } = useRtc();
   const members = (selected?.members ?? []).map(member => ({ ...member, sharing: sharingPeers.has(member.id) }));
@@ -37,7 +46,8 @@ export function MultiScreen() {
   return (
     <section className="multi-panel">
       <header>
-        <p>{selected.name} · {activeIds.length} transmissoes ativas</p>
+        <Button variant="ghost" icon={<IconChevronLeft />} onClick={onBack}>todos os grupos</Button>
+        <p>{activeIds.length} transmissoes ativas</p>
         <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
       </header>
       <div className="multi-grid">

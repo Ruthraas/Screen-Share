@@ -156,11 +156,21 @@ try {
   await page.getByRole("button", { name: "criar meu primeiro grupo" }).click();
   await page.getByLabel("nome:", { exact: true }).fill("grupo de teste local");
   await page.getByRole("button", { name: "criar grupo", exact: true }).click();
+  // Criar um grupo entra direto na sala dele (rota "room", separada da
+  // lista) — não mais na tela de "compartilhar_tela".
+  await page.getByRole("button", { name: "todos os grupos", exact: true }).waitFor();
+  await wave(); await snapshot("room");
+  await page.getByTitle("inicio", { exact: true }).click();
   await page.getByText("compartilhar_tela", { exact: true }).waitFor();
   await wave(); await snapshot("home");
   await page.getByTitle("grupos", { exact: true }).click();
   await page.getByRole("heading", { name: "grupos", exact: true }).waitFor();
   await wave(); await snapshot("groups");
+  // Clicar no card do grupo na lista deve entrar na sala de novo.
+  await page.getByText("grupo de teste local", { exact: true }).click();
+  await page.getByRole("button", { name: "todos os grupos", exact: true }).waitFor();
+  await page.getByRole("button", { name: "todos os grupos", exact: true }).click();
+  await page.getByRole("heading", { name: "grupos", exact: true }).waitFor();
   await page.getByTitle("configuracoes", { exact: true }).click();
   await page.getByRole("button", { name: "claro", exact: true }).click();
   await wave(); await snapshot("settings-light");
