@@ -68,7 +68,7 @@ sequenceDiagram
 |---|---|---|---|
 | Captura local → `MediaStream` | #8 | Frontend | Pronto (aguardando validação ao vivo) |
 | Protocolo de sinalização (schema) | #38 | Backend | Fechada |
-| Relay de sinalização (`/ws`) | #9 | Backend | Aberta, escopo revisado (só relay, sem lógica de cliente) |
+| Relay de sinalização (`/ws`) | #9 | Backend | **Fechada** (2026-09-13) — critérios de relay validados com teste real, reforçada pela #42 (reconexão/heartbeat) |
 | Infra TURN (coturn) | #40 | Backend | Aberta |
 | Credenciais TURN temporárias | #41 | Backend | Aberta, depende de #40 |
 | Teste de capacidade | #47 | Backend | Aberta, depende de #40/#41/#42/#43 |
