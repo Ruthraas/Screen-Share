@@ -171,12 +171,20 @@ manifesto que a issue #48 (cliente, @Ruthraas) vai consumir depois.
   não pra assinar); a privada foi gerada nesta etapa e entregue fora do
   Git (não em texto de PR/commit) — detalhe operacional em
   `docs/backend/RELEASES.md`.
-- **`createUpdaterArtifacts: true`** em `bundle` (não a instalação do
-  crate `tauri-plugin-updater`) é o que faz o `tauri build` assinar os
+- **`createUpdaterArtifacts: true`** (não a instalação do crate
+  `tauri-plugin-updater`) é o que faz o `tauri build` assinar os
   artefatos — mecanismo do bundler/CLI, independente de o app ter o
   plugin de update instalado/inicializado (isso é trabalho da #48,
   cliente). Confirmado na documentação oficial do Tauri antes de
-  configurar, pra não arriscar um manifesto mal formado.
+  configurar, pra não arriscar um manifesto mal formado. **Fica só no
+  `release.yml`** (mesclado via `tauri build --config
+  '{"bundle":{"createUpdaterArtifacts":true}}'`), não em
+  `tauri.conf.json` — achado real na primeira tentativa: colocar isso na
+  config base faz *qualquer* `tauri build` (inclusive o do
+  `frontend-ci.yml`, que roda sem `TAURI_SIGNING_PRIVATE_KEY`) exigir a
+  chave privada e falhar. `plugins.updater.pubkey`/`endpoints` continuam
+  em `tauri.conf.json` normalmente — só são dados de configuração, não
+  disparam a exigência de assinatura sozinhos.
 - **Verificação de versão própria** (`scripts/verificar-versao-release.mjs`)
   em vez de confiar só na tag: a issue exige que tag, `package.json`,
   `Cargo.toml` e `tauri.conf.json` batam exatamente, e que uma divergência
