@@ -126,6 +126,26 @@ por serem a mesma etapa:
   do contrato (#27), e nunca era contada nas métricas — `app.setNotFoundHandler`
   corrige os dois.
 
+**Adendo (issue #47, 2026-09-14): `journal_mode = WAL` no SQLite — achado
+real de teste de capacidade, não decisão especulativa.** Construído um
+script de teste de capacidade da camada de sinalização
+(`backend/scripts/teste-capacidade-signaling.mjs`, ver
+`docs/backend/TESTE_CAPACIDADE_SIGNALING.md` pro detalhe completo) e, ao
+rodar com centenas de conexões simultâneas, o setup (registro de
+usuários) mostrou degradação claramente super-linear (500 registros:
+~10s pros primeiros 100, ~147s no total). Causa: `openDatabase()`
+(`src/db/connection.ts`) nunca configurava `journal_mode`, então o SQLite
+usava o padrão (rollback journal), que recria/apaga um arquivo de journal
+e faz `fsync` a cada transação de escrita — em Windows isso piora com
+antivírus/indexação reescaneando o arquivo, e piora ainda mais conforme o
+arquivo cresce. Adicionado `PRAGMA journal_mode = WAL` + `PRAGMA
+synchronous = NORMAL` (pareamento padrão da própria documentação do
+SQLite pra esse cenário — ainda seguro contra corrupção). Resultado
+medido, mesmo teste: 147s → 8.4s pros 500 registros (17.6x), curva virou
+linear. Isso não é específico do teste sintético — vale pra qualquer
+sequência de escritas reais do produto (cadastro, importação em lote
+etc.), então é uma correção de produção, não só do ambiente de teste.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |

@@ -590,6 +590,34 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     com resposta simulada fiel ao formato real de cada API (confirmado
     nas docs oficiais, mesma verificação já feita pra endpoints/scopes
     na issue #30).
+- **#47 — Teste de capacidade de sinalização (2026-09-14)**: novo
+  `backend/scripts/teste-capacidade-signaling.mjs` (`npm run
+  test:capacidade-signaling`), detalhe completo em
+  `docs/backend/TESTE_CAPACIDADE_SIGNALING.md`.
+  - **Escopo**: só a camada de sinalização (WebSocket + API HTTP que a
+    antecede) — bitrate/CPU/memória de mídia real ficam fora porque não
+    são infraestrutura nossa (TURN é gerenciado pela Cloudflare desde
+    #40/#41) e, até essa etapa, o cliente ainda não tinha
+    `RTCPeerConnection` (#71, mergeado depois, nesta mesma data). Medir
+    conexões WS simultâneas, latência de relay de mensagens sob carga, e
+    tempo de notificação (`peer-left`) quando uma conexão cai.
+  - **Achado real de performance, não do teste**: `openDatabase()`
+    (`src/db/connection.ts`) nunca configurava `journal_mode`, e o
+    padrão do SQLite (rollback journal) degradava de forma super-linear
+    sob escrita repetida — 500 registros sequenciais foram de ~10s pros
+    primeiros 100 pra ~147s no total. Corrigido com `PRAGMA journal_mode
+    = WAL` + `PRAGMA synchronous = NORMAL`; mesmo teste depois:
+    **147s → 8.4s (17.6x mais rápido)**, curva virou linear. Decisão
+    completa em `docs/backend/ARQUITETURA.md`. Vale pra produção, não só
+    pro teste (qualquer sequência de escritas reais é afetada).
+  - Validado: `npm test` 166/166 (1 teste novo — pragmas do
+    `openDatabase` num banco real em arquivo temporário). **Smoke test
+    real contra um servidor de verdade** (não só unitário): 300 conexões
+    WS simultâneas, 2 execuções, 0 falhas nas duas, latência de connect
+    p95 ~250ms, latência de relay p95 <2ms, repetibilidade dentro da
+    tolerância documentada (50% relativa ou piso de 20ms) nas duas
+    execuções. Também testado até 500 conexões simultâneas durante a
+    investigação do achado do WAL, sem falhas.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
