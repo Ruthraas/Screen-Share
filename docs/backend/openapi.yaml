@@ -524,8 +524,13 @@ paths:
       summary: Emitir credenciais TURN temporárias
       operationId: issueTurnCredentials
       description: >
-        Requer usuário autenticado (issue #41). Credenciais expiram em
-        minutos e nunca são persistidas em log ou repositório.
+        Requer usuário autenticado (issue #41). Via Cloudflare Realtime TURN
+        (serviço gerenciado — decisão em docs/backend/ARQUITETURA.md), não
+        um coturn autogerenciado. Credenciais expiram em `ttlSeconds` e
+        nunca são persistidas em log ou repositório; `iceServers` já vem no
+        formato que `RTCPeerConnection({ iceServers })` espera direto,
+        incluindo a entrada STUN — o backend só repassa a resposta da
+        Cloudflare, nunca monta URL por conta própria.
       responses:
         "201":
           description: Credenciais de curta duração para o cliente configurar o RTCPeerConnection.
@@ -536,14 +541,20 @@ paths:
               examples:
                 default:
                   value:
-                    urls:
-                      - "turn:turn.screenshare.example:3478?transport=udp"
-                      - "turns:turn.screenshare.example:5349?transport=tcp"
-                    username: "1757683200:usr_123"
-                    credential: "base64-hmac-temporario"
-                    ttlSeconds: 600
+                    iceServers:
+                      - urls: ["stun:stun.cloudflare.com:3478"]
+                      - urls:
+                          - "turn:turn.cloudflare.com:3478?transport=udp"
+                          - "turns:turn.cloudflare.com:5349?transport=tcp"
+                        username: "temporary-username"
+                        credential: "temporary-credential"
+                    ttlSeconds: 3600
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
 
 components:
   securitySchemes:
@@ -619,8 +630,10 @@ components:
                   correlationId: "b3f1c2d7"
     RateLimited:
       description: >
-        Muitas requisições desse IP nesta rota — limite básico só nas rotas
-        públicas/sem sessão de /auth (não se aplica ao resto da API).
+        Muitas requisições desse IP nesta rota — limite básico nas rotas
+        públicas/sem sessão de /auth e em /turn-credentials (essa é
+        autenticada, mas cada chamada gera uma requisição de verdade pra
+        API da Cloudflare); não se aplica ao resto da API.
       content:
         application/json:
           schema:
@@ -632,6 +645,21 @@ components:
                   code: "rate_limited"
                   message: "Muitas requisições. Tente novamente em 1 minute."
                   correlationId: "b3f1c2d8"
+    UpstreamError:
+      description: >
+        Uma dependência externa (ex.: API de TURN da Cloudflare) falhou ou
+        está indisponível — nunca culpa de quem chamou.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                error:
+                  code: "upstream_error"
+                  message: "Serviço externo indisponível no momento."
+                  correlationId: "b3f1c2d9"
 
   schemas:
     Error:
@@ -767,7 +795,24 @@ components:
 
     TurnCredentials:
       type: object
-      required: [urls, username, credential, ttlSeconds]
+      required: [iceServers, ttlSeconds]
+      properties:
+        iceServers:
+          type: array
+          description: >
+            Repassado direto da Cloudflare — já no formato de
+            `RTCConfiguration.iceServers`. Sempre inclui uma entrada STUN
+            (sem username/credential) e uma entrada TURN (com credenciais
+            de curta duração).
+          items:
+            $ref: "#/components/schemas/IceServer"
+        ttlSeconds:
+          type: integer
+          description: Validade das credenciais em segundos — renovar antes de expirar (ver docs/WEBRTC_TURN_PLAN.md).
+
+    IceServer:
+      type: object
+      required: [urls]
       properties:
         urls:
           type: array
@@ -775,9 +820,7 @@ components:
             type: string
         username:
           type: string
-          description: "Formato TURN REST padrão: timestamp de expiração + identidade."
+          description: Só presente na entrada TURN — nunca reusar após expirar.
         credential:
           type: string
-          description: HMAC derivado do segredo do servidor TURN; nunca o segredo em si.
-        ttlSeconds:
-          type: integer
+          description: Credencial de curta duração emitida pela Cloudflare; nunca o segredo mestre (TURN_KEY_API_TOKEN) do servidor.

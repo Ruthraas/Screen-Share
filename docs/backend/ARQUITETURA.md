@@ -74,6 +74,30 @@ hasheado no banco, revogável. OAuth 2.0 (Google, GitHub, Discord) via
 exatos de cada provedor documentados em `src/auth/oauthProviders.ts` e
 verificados nas docs oficiais em 2026-09-12. Detalhe completo na seção 5.
 
+**Adendo (issue #40/#41, 2026-09-14): TURN via Cloudflare Realtime (serviço
+gerenciado) em vez de coturn autogerenciado.** O plano original (issue #27)
+previa operar um `coturn` próprio, com credenciais de curta duração
+derivadas de um segredo estático via HMAC (padrão "TURN REST API"). Decisão
+revertida: o usuário provisionou uma TURN Key na Cloudflare Realtime em vez
+de subir infraestrutura própria — mesma lógica de custo/operação que já
+levou a decisões parecidas neste projeto (SQLite em vez de Postgres
+operado à parte, scrypt em vez de mais uma dependência nativa): dois
+mantenedores não ganham nada operando um `coturn` quando um serviço
+gerenciado resolve o mesmo problema sem servidor pra manter no ar,
+atualizar ou escalar.
+
+Integração: `src/turn/cloudflareTurnProvider.ts` chama
+`POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers`
+(`fetch` nativo, sem SDK — mesma filosofia do módulo `auth`), autenticado
+com `TURN_KEY_API_TOKEN` (`Authorization: Bearer`, segredo de servidor,
+nunca chega ao cliente). A resposta da Cloudflare já vem no formato exato
+de `RTCConfiguration.iceServers` (array com uma entrada STUN e uma TURN,
+username/credential de curta duração) — `POST /v1/turn-credentials`
+(issue #41) só repassa isso pro cliente autenticado, sem decidir STUN/TURN
+nem montar URL por conta própria. Endpoint/formato confirmados na doc
+oficial da Cloudflare em 2026-09-14. Detalhe do contrato completo e do
+diagrama de sequência em `docs/WEBRTC_TURN_PLAN.md`.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |
@@ -84,7 +108,7 @@ verificados nas docs oficiais em 2026-09-12. Detalhe completo na seção 5.
 | `authz` | Policy única de papel (owner/admin/member) aplicada a `http` e `ws` | #35, #39 |
 | `data` | Schema/migrações de grupos, membros, convites | #31 |
 | `presence` | Heartbeat, TTL, eventos de entrada/saída | #36 |
-| `turn` | Integração com coturn, emissão de credenciais de curta duração | #40, #41 |
+| `turn` | Integração com Cloudflare Realtime TURN (serviço gerenciado), emissão de credenciais de curta duração | #40, #41 |
 | `signaling-protocol` | Contratos versionados de evento (join/leave/offer/answer/ice/…) | #38 |
 | `config` | Configuração validada por ambiente, segredos fora do Git | #29 |
 | `observability` | Logs estruturados, métricas, health/readiness | #44 |

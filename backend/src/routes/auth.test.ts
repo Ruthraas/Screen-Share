@@ -5,6 +5,7 @@ import { FakeTokenVerifier } from "../testing/fakeTokenVerifier.js";
 import { createTestDb } from "../testing/testDb.js";
 import { testAuthConfig } from "../testing/testAuthConfig.js";
 import { fakeOAuthProvider } from "../testing/fakeOAuthProvider.js";
+import { fakeTurnProvider } from "../testing/fakeTurnProvider.js";
 import { verifyAccessToken } from "../auth/sessionTokens.js";
 import type { OAuthProviderName, OAuthProvider } from "../auth/oauthProviders.js";
 
@@ -26,6 +27,7 @@ function build(options: { withGoogleConfigured?: boolean } = {}) {
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
     authConfig,
+    turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
     signalingPath: "/ws",
     oauthProviders: providers,

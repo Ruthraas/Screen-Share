@@ -5,12 +5,14 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerGroupRoutes } from "./routes/groups.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerTurnRoutes } from "./routes/turn.js";
 import { authPlugin } from "./auth/plugin.js";
 import type { TokenVerifier } from "./auth/verifier.js";
 import { UserRepository } from "./auth/userRepository.js";
 import type { OAuthProvider, OAuthProviderName } from "./auth/oauthProviders.js";
+import type { TurnCredentialsProvider } from "./turn/cloudflareTurnProvider.js";
 import { errorBody } from "./http/errors.js";
-import { ConflictError, ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError, ValidationError } from "./errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError, UpstreamError, ValidationError } from "./errors.js";
 import { GroupsRepository } from "./groups/repository.js";
 import { PresenceStore } from "./presence/store.js";
 import { SignalingRooms } from "./signaling/room.js";
@@ -29,6 +31,7 @@ export interface BuildServerOptions {
   verifier: TokenVerifier;
   db: Database.Database;
   authConfig: AppConfig["auth"];
+  turnProvider: TurnCredentialsProvider;
   corsAllowedOrigins: string[];
   signalingPath: string;
   presence?: PresenceStore;
@@ -53,6 +56,7 @@ export function buildServer({
   verifier,
   db,
   authConfig,
+  turnProvider,
   corsAllowedOrigins,
   signalingPath,
   presence,
@@ -100,26 +104,30 @@ export function buildServer({
   });
   registerHealthRoutes(app, db);
 
-  // Rate limit só nas rotas de `/v1/auth/*` (únicas públicas e não
-  // autenticadas, logo as mais expostas a automação/abuso) — por isso
-  // `rateLimit` e `registerAuthRoutes` entram juntos num `register()`
-  // encapsulado, em vez de registrar o plugin direto no `app` raiz.
-  // Motivo: `config.rateLimit` por rota depende do hook `onRoute`, que só
-  // existe depois que o *corpo* do plugin de fato roda — e isso só é
-  // garantido esperando o `register()` (via `await` aqui dentro); sem essa
-  // espera, as rotas seriam adicionadas antes do hook existir e o limite
-  // nunca entraria em vigor (bug real, reproduzido isoladamente antes desta
-  // correção). `buildServer()` continua síncrona: quem chama só precisa
-  // esperar a instância ficar pronta no primeiro `inject()`/`listen()`,
-  // igual a antes. `errorResponseBuilder` devolve o mesmo envelope de erro
-  // do resto do contrato (#27) em vez do formato default do plugin.
-  app.register(async (authScope) => {
-    await authScope.register(rateLimit, {
+  // Rate limit nas rotas de `/v1/auth/*` (únicas públicas e não
+  // autenticadas, logo as mais expostas a automação/abuso) e em
+  // `/v1/turn-credentials` (autenticada, mas cada chamada gera uma
+  // requisição de verdade pra API da Cloudflare — o limite aqui é sobre
+  // quota/custo do provedor, não só abuso do nosso servidor) — por isso
+  // `rateLimit` entra junto dessas rotas num `register()` encapsulado, em
+  // vez de registrar o plugin direto no `app` raiz. Motivo: `config.rateLimit`
+  // por rota depende do hook `onRoute`, que só existe depois que o *corpo*
+  // do plugin de fato roda — e isso só é garantido esperando o `register()`
+  // (via `await` aqui dentro); sem essa espera, as rotas seriam adicionadas
+  // antes do hook existir e o limite nunca entraria em vigor (bug real,
+  // reproduzido isoladamente antes desta correção). `buildServer()`
+  // continua síncrona: quem chama só precisa esperar a instância ficar
+  // pronta no primeiro `inject()`/`listen()`, igual a antes.
+  // `errorResponseBuilder` devolve o mesmo envelope de erro do resto do
+  // contrato (#27) em vez do formato default do plugin.
+  app.register(async (rateLimitedScope) => {
+    await rateLimitedScope.register(rateLimit, {
       global: false,
       errorResponseBuilder: (_request, context) =>
         new RateLimitedError(`Muitas requisições. Tente novamente em ${context.after}.`),
     });
-    registerAuthRoutes(authScope, userRepo, authConfig, oauthProviders);
+    registerAuthRoutes(rateLimitedScope, userRepo, authConfig, oauthProviders);
+    registerTurnRoutes(rateLimitedScope, turnProvider);
   });
 
   registerGroupRoutes(app, groupsRepo);
@@ -157,6 +165,11 @@ export function buildServer({
     }
     if (err instanceof RateLimitedError) {
       reply.code(429).send(errorBody("rate_limited", err.message, request.id));
+      return;
+    }
+    if (err instanceof UpstreamError) {
+      request.log.error({ err }, "dependência externa falhou");
+      reply.code(502).send(errorBody("upstream_error", err.message, request.id));
       return;
     }
     // Erro do próprio Fastify (não é uma classe de domínio nossa) que já

@@ -3,6 +3,7 @@ import { loadConfig, toPublicSummary, ConfigError } from "./config.js";
 import { SessionTokenVerifier } from "./auth/sessionTokenVerifier.js";
 import { openDatabase } from "./db/connection.js";
 import { migrateUp } from "./db/migrate.js";
+import { cloudflareTurnProvider } from "./turn/cloudflareTurnProvider.js";
 
 async function main(): Promise<void> {
   let config;
@@ -20,10 +21,12 @@ async function main(): Promise<void> {
   const applied = migrateUp(db);
 
   const verifier = new SessionTokenVerifier(config.auth.sessionSigningSecret);
+  const turnProvider = cloudflareTurnProvider(config.turn.keyId, config.turn.apiToken);
   const app = buildServer({
     verifier,
     db,
     authConfig: config.auth,
+    turnProvider,
     corsAllowedOrigins: config.cors.allowedOrigins,
     signalingPath: config.signaling.path,
   });

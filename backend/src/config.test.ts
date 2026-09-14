@@ -7,8 +7,8 @@ const validEnv = {
   SESSION_SIGNING_SECRET: "a".repeat(32),
   PASSWORD_PEPPER: "b".repeat(16),
   OAUTH_REDIRECT_BASE_URL: "http://127.0.0.1:8787",
-  TURN_HOST: "turn.example.com",
-  TURN_SECRET: "super-secreto",
+  TURN_KEY_ID: "turn-key-id-exemplo",
+  TURN_KEY_API_TOKEN: "super-secreto",
 };
 
 test("configuração válida: usa defaults e mantém os valores explícitos", () => {
@@ -17,8 +17,8 @@ test("configuração válida: usa defaults e mantém os valores explícitos", ()
   assert.equal(config.port, 8787);
   assert.equal(config.signaling.path, "/ws");
   assert.equal(config.database.path, ":memory:");
-  assert.equal(config.turn.host, "turn.example.com");
-  assert.equal(config.turn.secret, "super-secreto");
+  assert.equal(config.turn.keyId, "turn-key-id-exemplo");
+  assert.equal(config.turn.apiToken, "super-secreto");
   assert.equal(config.auth.oauthRedirectBaseUrl, "http://127.0.0.1:8787");
   assert.deepEqual(config.auth.oauthFrontendRedirectUrls, {
     browser: "http://127.0.0.1:5173/oauth.html",
@@ -46,7 +46,7 @@ test("CORS_ALLOWED_ORIGINS customizada é dividida por vírgula e sem espaços",
 
 test("configuração ausente: variável obrigatória faltando falha com mensagem clara", () => {
   assert.throws(
-    () => loadConfig({ TURN_HOST: "turn.example.com", TURN_SECRET: "x" }),
+    () => loadConfig({ TURN_KEY_ID: "turn-key-id-exemplo", TURN_KEY_API_TOKEN: "x" }),
     (err: unknown) => {
       assert.ok(err instanceof ConfigError);
       assert.match((err as Error).message, /DATABASE_PATH/);
@@ -93,6 +93,6 @@ test("resumo público oculta segredos", () => {
   assert.doesNotMatch(serialized, new RegExp(validEnv.SESSION_SIGNING_SECRET));
   assert.doesNotMatch(serialized, new RegExp(validEnv.PASSWORD_PEPPER));
   assert.doesNotMatch(serialized, /secret-google/);
-  assert.match(serialized, /turn\.example\.com/, "campos não sensíveis continuam visíveis");
+  assert.match(serialized, /turn-key-id-exemplo/, "campos não sensíveis continuam visíveis");
   assert.match(serialized, /google/, "lista de provedores configurados (só o nome) continua visível");
 });

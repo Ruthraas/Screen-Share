@@ -5,6 +5,7 @@ import { buildServer, type BuildServerOptions } from "../server.js";
 import { FakeTokenVerifier } from "../testing/fakeTokenVerifier.js";
 import { createTestDb } from "../testing/testDb.js";
 import { testAuthConfig } from "../testing/testAuthConfig.js";
+import { fakeTurnProvider } from "../testing/fakeTurnProvider.js";
 import type { FastifyInstance } from "fastify";
 
 /**
@@ -23,6 +24,7 @@ async function build(
     verifier: new FakeTokenVerifier(),
     db: createTestDb(),
     authConfig: testAuthConfig(),
+    turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
     signalingPath: "/ws",
     ...(logger ? { logger } : {}),

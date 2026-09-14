@@ -41,3 +41,11 @@ export class RateLimitedError extends Error {
     this.name = "RateLimitedError";
   }
 }
+
+/** Uma dependência externa (ex.: API de credenciais TURN da Cloudflare) falhou ou está indisponível — nunca culpa de quem chamou. */
+export class UpstreamError extends Error {
+  constructor(message = "Serviço externo indisponível no momento.") {
+    super(message);
+    this.name = "UpstreamError";
+  }
+}
