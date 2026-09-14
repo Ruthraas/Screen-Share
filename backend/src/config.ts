@@ -48,10 +48,15 @@ const envSchema = z.object({
   // Sinalização (issue #37/#38) — não é segredo, tem valor padrão seguro.
   SIGNALING_PATH: z.string().min(1).default("/ws"),
 
-  // TURN (issue #40/#41) — segredo usado para gerar credenciais HMAC de
-  // curta duração; nunca tem valor padrão.
-  TURN_HOST: z.string().min(1, "TURN_HOST é obrigatória"),
-  TURN_SECRET: z.string().min(1, "TURN_SECRET é obrigatória"),
+  // TURN (issue #40/#41) — Cloudflare Realtime TURN (serviço gerenciado,
+  // decisão registrada em docs/backend/ARQUITETURA.md), não um coturn
+  // autogerenciado. TURN_KEY_ID identifica a chave TURN (visível, entra na
+  // própria URL da API da Cloudflare — mesmo status de um client_id, não é
+  // segredo); TURN_KEY_API_TOKEN é o segredo de servidor usado só aqui pra
+  // gerar credenciais de curta duração, nunca enviado ao cliente. Nenhum
+  // dos dois tem valor padrão.
+  TURN_KEY_ID: z.string().min(1, "TURN_KEY_ID é obrigatória"),
+  TURN_KEY_API_TOKEN: z.string().min(1, "TURN_KEY_API_TOKEN é obrigatória"),
 
   // CORS (issue #59) — lista separada por vírgula. Padrão são as origens
   // reais deste projeto: o dev server do Vite (vite.config.ts: host
@@ -92,8 +97,8 @@ export interface AppConfig {
     path: string;
   };
   turn: {
-    host: string;
-    secret: string;
+    keyId: string;
+    apiToken: string;
   };
   cors: {
     allowedOrigins: string[];
@@ -154,8 +159,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       path: parsed.SIGNALING_PATH,
     },
     turn: {
-      host: parsed.TURN_HOST,
-      secret: parsed.TURN_SECRET,
+      keyId: parsed.TURN_KEY_ID,
+      apiToken: parsed.TURN_KEY_API_TOKEN,
     },
     cors: {
       allowedOrigins: parsed.CORS_ALLOWED_ORIGINS.split(",")
@@ -184,8 +189,8 @@ export function toPublicSummary(config: AppConfig): Record<string, unknown> {
     },
     signaling: { path: config.signaling.path },
     turn: {
-      host: config.turn.host,
-      secret: REDACTED,
+      keyId: config.turn.keyId,
+      apiToken: REDACTED,
     },
     cors: { allowedOrigins: config.cors.allowedOrigins },
   };

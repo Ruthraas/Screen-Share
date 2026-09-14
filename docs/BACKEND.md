@@ -471,6 +471,48 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     tentou, só reporta o estado real da conexão (`peer-left`/
     `peer-reconnected`) o mais rápido possível pra decisão do cliente ser
     bem informada.
+- **#40 + #41 — TURN via Cloudflare Realtime (2026-09-14)**: o usuário
+  provisionou uma TURN Key gerenciada na Cloudflare em vez de operar um
+  coturn próprio — decisão registrada em `docs/backend/ARQUITETURA.md`
+  (mesma lógica de custo/operação de outras decisões deste projeto: SQLite
+  em vez de Postgres à parte, scrypt em vez de mais um addon nativo).
+  - `src/turn/cloudflareTurnProvider.ts` chama
+    `POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers`
+    com `fetch` nativo (sem SDK, mesma filosofia do módulo `auth`),
+    autenticado via `TURN_KEY_API_TOKEN` (`Authorization: Bearer`).
+    `TURN_HOST`/`TURN_SECRET` (padrão coturn/HMAC, nunca implementado de
+    verdade) saem do `config.ts`; entram `TURN_KEY_ID` (não é segredo,
+    entra na própria URL da API) e `TURN_KEY_API_TOKEN` (segredo,
+    redigido em `toPublicSummary()`).
+  - `POST /v1/turn-credentials` (issue #41, `src/routes/turn.ts`) exige
+    sessão autenticada e repassa a resposta da Cloudflare sem transformar
+    — ela já vem no formato exato de `RTCConfiguration.iceServers`
+    (entrada STUN + entrada TURN com credencial de curta duração), então
+    o backend nunca monta URL nem decide STUN/TURN por conta própria.
+    TTL fixo de 1h (`TURN_CREDENTIALS_TTL_SECONDS`), rate limit de 10/min
+    por IP (cada chamada é uma requisição de verdade pra Cloudflare —
+    protege quota/custo do provedor, não só abuso do nosso servidor).
+    Falha da Cloudflare (rede ou resposta não-2xx) vira `UpstreamError`
+    → `502 {code: "upstream_error"}`, nova classe no `setErrorHandler`
+    central — nunca um 500 genérico nem exposição do token no log/erro.
+  - Validado: `npm test` 139/139 (8 testes novos — provider isolado com
+    `fetch` trocado por um fake só no teste, confirmando URL/header/body
+    exatos e mapeamento de erro sem vazar o token; rota com provider
+    fake confirmando sucesso/401 sem chamar o provider/502/429).
+    **Smoke test real contra a API de verdade da Cloudflare** (não só
+    fake): a chamada chega certinho no endpoint certo, formato certo
+    (confirmado pelo próprio header `Link: <stun:...>; rel="ice-server"`
+    que a Cloudflare devolve) — só que a `TURN_KEY_ID` configurada não
+    corresponde a uma chave válida (`{"error":"cannot find specified
+    key"}`), provavelmente copiada de uma tela diferente da Cloudflare
+    (Calls/SFU usa os mesmos nomes "App ID"/"API Token" só que é outro
+    produto). Reportado ao usuário — pendente revalidar em Realtime →
+    TURN no dashboard. Detalhe completo em `docs/WEBRTC_TURN_PLAN.md`.
+  - **Achado recorrente, de novo**: credenciais coladas no `.env` sem
+    `KEY=VALUE` (`App ID` / valor / `API Token` / valor, em linhas soltas,
+    copiado direto do dashboard) — mesmo padrão de erro já visto com
+    Google/Discord nesta etapa do projeto; corrigido pra `TURN_KEY_ID=`/
+    `TURN_KEY_API_TOKEN=`.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -539,7 +581,7 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 - **Grupos e convites — implementados** (`src/routes/groups.ts`, testados): `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave` (dono recebe `409` se tentar saír sem transferir/excluir antes), `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept` (idempotente pra quem já é membro; `409` se expirado/revogado/esgotado). `PATCH`/criar-revogar-convite exigem papel `owner` ou `admin`; excluir grupo exige `owner`.
 - **Presença — implementada** (`src/routes/presence.ts`, testada): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`.
 - **WebSocket** (`/ws?token=...&groupId=...`): cliente troca `offer`/`answer`/`ice-candidate`/`stream-started`/`stream-stopped` por um protocolo versionado com `correlationId` (#38, implementado e testado) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend). **Reconexão (#42, 2026-09-13)**: se a mesma conta abrir uma nova conexão pro mesmo grupo sem a antiga ter caído ainda (queda de rede curta), os outros participantes recebem `peer-reconnected` no lugar de um `peer-joined` repetido — é o sinal pra tentar ICE restart com esse peer em vez de tratar como entrada do zero; a conexão antiga sendo substituída nunca gera um `peer-left` falso (ela é fechada pelo servidor com código `4409`). Conexão sem `close` limpo (queda sem aviso — cabo, notebook suspenso) é detectada por heartbeat ping/pong a cada 15s e limpa em até ~30s, disparando `peer-left` de verdade nesse prazo em vez de depender do timeout do TCP (que pode levar minutos).
-- **TURN — ainda não implementado** (payload já definido em `openapi.yaml`, aguardando #40/#41, decisão de infra do usuário adiada de propósito): cliente vai precisar pedir credenciais temporárias ao backend (`POST /v1/turn-credentials`) antes de abrir conexão — nunca usar segredo estático.
+- **TURN — implementado** (2026-09-14, via Cloudflare Realtime — ver `docs/backend/ARQUITETURA.md`): `POST /v1/turn-credentials` (autenticado) devolve `{ iceServers, ttlSeconds }` já no formato exato de `RTCConfiguration.iceServers` (`docs/WEBRTC_TURN_PLAN.md` tem o contrato completo pra #71). Pendente só uma TURN Key válida na conta Cloudflare do lado do usuário (não é trabalho de código) — cliente nunca deve usar segredo estático, sempre pedir credencial nova antes de abrir conexão.
 - **Updater**: `#48` (frontend, exibir/instalar atualização) consome o manifesto gerado por `#49` (backend/infra) — URLs HTTPS da própria release, arquitetura x64.
 - **Dependência inversa**: `#49` (backend) só fecha depois que o frontend entregar `#5` (build/smoke test Windows) e `#22` (ícones/identidade do bundle).
 - **Dependência inversa**: `#10` (integração) só fecha depois que o frontend entregar `#20` (troca entre transmissões no cliente).
