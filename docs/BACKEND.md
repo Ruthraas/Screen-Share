@@ -648,6 +648,34 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     (sem ambiente Rust local nesta máquina pra rodar `cargo check`/`tauri
     build` — validação real acontece na primeira tag empurrada, via CI).
 
+- **#45 — Suíte de testes automatizados do backend (2026-09-14)**: fechamento
+  formal, não código novo — a cobertura já existia, acumulada issue a
+  issue desde a #30, e os critérios de aceite (fluxos felizes e negativos
+  cobertos; determinístico; comando único; suíte repetida em ambiente
+  limpo) já estavam satisfeitos na prática. Validado nesta etapa
+  especificamente pra fechar a issue com evidência:
+  - **166/166 testes**, `npm test` (`tsx --test src/**/*.test.ts`, comando
+    único), executado **duas vezes em ambiente limpo** (`rm -rf
+    node_modules && npm ci` antes de cada rodada) — determinístico nas
+    duas.
+  - **22 arquivos de teste**, cobrindo todo módulo com issue de
+    implementação própria: `auth` (senha/scrypt, payload assinado HMAC,
+    access/refresh token, perfil OAuth com fakes de Google/GitHub/Discord,
+    userRepository incl. COALESCE de perfil), `authz` (policy de papel),
+    `config` (schema de env), `cors`, `db` (migrações incl. down, pragmas
+    de conexão), `observability` (métricas), `presence` (store),
+    `routes` (auth, groups, presence, turn — 401/403/404/409/422/429
+    testados, não só o caminho feliz), `server` (integração HTTP+WS de
+    ponta a ponta), `signaling` (protocolo versionado, limite de conexão
+    por IP, reconexão/heartbeat).
+  - **Instruções de execução**: já documentadas — `backend/README.md` +
+    `npm test` na raiz de `backend/`, sem dependência de serviço externo
+    (OAuth/TURN/DB usam fake ou arquivo local; nenhuma credencial real).
+  - Fora do que este teste cobre (por natureza, não por lacuna): fluxo de
+    consentimento real dos três provedores OAuth (exige humano clicando —
+    documentado issue a issue conforme apareceu) e capacidade sob carga
+    real (isso é a #47, teste separado por design, não unitário).
+
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
 Ordem de execução pela dependência declarada em cada issue (quem não depende
