@@ -97,6 +97,22 @@ await page.route("**/v1/groups/*", route => {
   return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...group, members: [{ userId: uid, role: "owner" }] }) });
 });
 
+// issue #71: assim que um grupo é selecionado, `RtcProvider` abre sinalização
+// de verdade (`/ws`) e busca credenciais TURN. Sem backend real aqui, nunca
+// deixa isso virar uma tentativa de rede de verdade: uma conexão WS que
+// falha loga a URL completa (com o access token na query string — o
+// WebSocket do navegador não aceita header `Authorization`, então o token
+// vai ali por definição do protocolo) no console nativo do Chromium, o que
+// SEMPRE vazaria o token no transcript varrido mais abaixo. Interceptar
+// aqui em vez de deixar falhar é o jeito certo de nunca gerar esse log,
+// não só de "passar no teste".
+await page.routeWebSocket(/\/ws\?/, ws => ws.close());
+await page.route("**/v1/turn-credentials", route => route.fulfill({
+  status: 201,
+  contentType: "application/json",
+  body: JSON.stringify({ iceServers: [{ urls: ["stun:stun.example.invalid:3478"] }], ttlSeconds: 3600 }),
+}));
+
 await mkdir("artifacts/ui", { recursive: true });
 async function snapshot(name) {
   await page.screenshot({ path: `artifacts/ui/${name}.png`, animations: "disabled" });

@@ -14,8 +14,11 @@ export function resolveSelection(activeIds: string[], currentSelection: string |
   return activeIds[0] ?? null;
 }
 
-/** Seleciona qual transmissão ativa é exibida no viewer. */
-export function useStreamSelection(activeIds: string[]): [string | null, (id: string) => void] {
+/** Seleciona qual transmissão ativa é exibida no viewer. `null` limpa a
+ * seleção de propósito (issue #71: fechar o `ScreenViewer` remoto sem
+ * escolher outro participante) — `resolveSelection` só reage quando
+ * `activeIds` muda, então isso não volta sozinho pro primeiro ativo. */
+export function useStreamSelection(activeIds: string[]): [string | null, (id: string | null) => void] {
   const [selected, setSelected] = useState<string | null>(() => resolveSelection(activeIds, null));
 
   useEffect(() => {

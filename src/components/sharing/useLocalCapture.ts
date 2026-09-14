@@ -16,7 +16,7 @@ import {
   type CaptureQuality,
 } from "../../services/captureClient";
 import { base64ToBytes, decodeInterleavedPcm } from "./pcmAudio";
-import { setSharingActive } from "../../services/sharingState";
+import { setLocalStream, setSharingActive } from "../../services/sharingState";
 
 export type LocalCaptureStatus = "idle" | "starting" | "active" | "error";
 
@@ -91,6 +91,7 @@ export function useLocalCapture() {
 
   const teardown = useCallback(() => {
     setSharingActive(false);
+    setLocalStream(null);
     setHasFrame(false);
     for (const unlisten of unlistenRef.current) unlisten();
     unlistenRef.current = [];
@@ -206,6 +207,7 @@ export function useLocalCapture() {
       setStream(combined);
       setStatus("active");
       setSharingActive(true);
+      setLocalStream(combined);
       playStartChime();
       log.info("capture", "captura local iniciada", { quality, fps, audio: audioEnabled });
     } catch (startError) {

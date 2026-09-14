@@ -5,7 +5,7 @@
  * só `console.*`); redige qualquer campo cujo nome pareça sensível antes de
  * imprimir, então quem loga não precisa filtrar manualmente a cada chamada.
  */
-export type LogScope = "auth" | "desktop" | "capture";
+export type LogScope = "auth" | "desktop" | "capture" | "rtc";
 type LogLevel = "debug" | "info" | "warn" | "error";
 type LogContext = Record<string, unknown>;
 

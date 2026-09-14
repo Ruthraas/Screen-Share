@@ -2074,7 +2074,11 @@ button:disabled,
   padding: 24px 40px;
   position: relative;
   display: grid;
-  grid-template-rows: auto auto auto;
+  /* Numero de linhas variavel agora (issue #71: status do convite e o
+     viewer/texto de baixo sao ambos condicionais) — linhas fixas demais
+     forcavam um scroll a mais toda vez que um item extra aparecia. */
+  grid-auto-rows: auto;
+  gap: 16px;
   align-content: start;
   overflow: auto;
   border: 0;
@@ -2102,6 +2106,18 @@ button:disabled,
   background: var(--accent);
   animation: cursor-blink 1s step-start infinite;
 }
+/* Indicador de ping/qualidade por participante (issue #71) — canto oposto
+   ao live-dot, pra nunca sobrepor. */
+.quality-icon {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 14px;
+  height: 14px;
+}
+.quality-icon--good { color: var(--accent); }
+.quality-icon--ok { color: #C9A227; }
+.quality-icon--bad { color: var(--danger); }
 .cursor--blink {
   animation: cursor-blink 1s step-start infinite;
 }
