@@ -676,38 +676,40 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     documentado issue a issue conforme apareceu) e capacidade sob carga
     real (isso é a #47, teste separado por design, não unitário).
 - **#82 — Hospedar o backend em produção (2026-09-14, EM ANDAMENTO)**:
-  infraestrutura de deploy pronta e commitada; o deploy real (criar conta,
-  volume, secrets, primeiro `fly deploy`) depende de ação do
-  @ProgVictorPe fora desta sessão — não é algo que dê pra automatizar
-  (criação de conta em serviço de terceiro). Decisão completa em
-  `docs/backend/ARQUITETURA.md`, passo a passo em
+  banco migrado e validado contra serviço real; infraestrutura de deploy
+  pronta e commitada; falta só a ação final do usuário no dashboard do
+  Render (criar conta/serviço, preencher secrets) — não é algo que dê pra
+  automatizar (criação de conta em serviço de terceiro). Decisão completa
+  em `docs/backend/ARQUITETURA.md`, passo a passo em
   `docs/backend/HOSPEDAGEM.md`.
-  - **Fly.io + Volume persistente**, escolhido entre 4 opções avaliadas
-    na própria issue — decisão final do usuário, não da IA (a issue
-    registra isso explicitamente). Zero mudança de código: mesmo
-    `better-sqlite3`, `DATABASE_PATH` só aponta pro Volume montado.
-  - Novo `backend/Dockerfile` (`node:22-bookworm-slim`, não Alpine — o
-    `better-sqlite3` só tem prebuild pra glibc, issue #58) e
-    `backend/fly.toml` (`[[mounts]]` pro volume, `[http_service]` com
-    `min_machines_running = 1` + `auto_stop_machines = "off"` — nunca
-    escalar acima de 1 máquina, WebSocket de sinalização não sobrevive a
-    suspensão e SQLite não aguenta dois escritores concorrentes).
-  - **Não testado ainda de ponta a ponta**: sem Docker nem `flyctl`
-    localmente nesta sessão pra validar o build real — a validação real
-    acontece no primeiro `fly deploy` do usuário (que usa o builder
-    remoto do próprio Fly, não precisa de Docker local). Conferido à mão:
-    todo arquivo que o `Dockerfile` copia existe no caminho esperado;
-    `npm run build` gera exatamente `dist/index.js` (entrypoint do
-    `CMD`); `migrations/` fica no mesmo nível relativo que
-    `src/db/migrate.ts` espera em produção; sintaxe do `fly.toml`
-    validada com um parser TOML real.
+  - **Banco migrado de `better-sqlite3` (SQLite local) pra
+    `@libsql/client`/Turso (libSQL remoto)** — decisão trocada no mesmo
+    dia da anterior por orçamento (time sem verba pra hospedagem paga).
+    Toda a camada de banco e cadeia de chamadas virou assíncrona (efeito
+    mecânico da troca de driver). `better-sqlite3` removido do
+    `package.json` — zero dependência nativa restante no backend.
+  - **Validado contra um banco Turso real**, não só a suíte local em
+    `:memory:`: banco de dev criado (`screenshare-dev`, AWS
+    `us-east-1`/Virginia), migrações aplicadas, `/ready` confirmando
+    leitura/escrita, e um fluxo real (registro → login → criar grupo →
+    checar role → excluir grupo) rodado ponta a ponta contra o banco
+    remoto.
+  - **Hospedagem final é Render** (serviço Node nativo, sem Docker — não
+    há mais dependência nativa que justifique controlar a imagem base),
+    não Fly.io: a única razão de ter descartado Render antes (disco
+    efêmero apagando o SQLite) deixou de existir com o backend sem
+    estado. `render.yaml` (Blueprint, raiz do repo) substitui
+    `backend/fly.toml`/`backend/Dockerfile`/`backend/.dockerignore`
+    (removidos). Sem Volume, sem `min_machines_running` fixo — nada mais
+    preso a uma máquina só.
   - Pendente pro usuário (documentado em `docs/backend/HOSPEDAGEM.md`):
-    criar conta/autenticar no Fly, criar o app e o volume, configurar os
-    secrets de produção (`SESSION_SIGNING_SECRET`/`PASSWORD_PEPPER` novos,
-    nunca os de dev), `fly deploy`, validar persistência forçando um
-    restart, e atualizar o redirect URI em cada provedor OAuth
-    configurado (`https://<domínio>/v1/auth/oauth/<provider>/callback`)
-    — sem isso o login OAuth quebra em produção mesmo com o backend no ar.
+    criar conta no Render, deploy via Blueprint, preencher os secrets no
+    formulário (`SESSION_SIGNING_SECRET`/`PASSWORD_PEPPER` novos, nunca
+    os de dev), completar `OAUTH_REDIRECT_BASE_URL` com a URL real depois
+    do primeiro deploy, validar persistência forçando um redeploy manual,
+    e atualizar o redirect URI em cada provedor OAuth configurado
+    (`https://<domínio>/v1/auth/oauth/<provider>/callback`) — sem isso o
+    login OAuth quebra em produção mesmo com o backend no ar.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
