@@ -6,10 +6,10 @@ import { createTestDb } from "../testing/testDb.js";
 import { testAuthConfig } from "../testing/testAuthConfig.js";
 import { fakeTurnProvider } from "../testing/fakeTurnProvider.js";
 
-function build() {
+async function build() {
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
@@ -22,7 +22,7 @@ function auth(uid: string) {
 }
 
 test("criar grupo torna o criador owner; grupo aparece na listagem dele", async () => {
-  const app = build();
+  const app = await build();
   try {
     const create = await app.inject({
       method: "POST",
@@ -48,7 +48,7 @@ test("criar grupo torna o criador owner; grupo aparece na listagem dele", async 
 });
 
 test("criar grupo sem nome falha com 422", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "POST",
@@ -69,7 +69,7 @@ async function createGroup(app: ReturnType<typeof build>, ownerUid: string, name
 }
 
 test("quem não é membro recebe 404 ao ver o grupo (não 403 — não revela existência)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const response = await app.inject({ method: "GET", url: `/v1/groups/${group.id}`, headers: auth("outsider1") });
@@ -80,7 +80,7 @@ test("quem não é membro recebe 404 ao ver o grupo (não 403 — não revela ex
 });
 
 test("membro comum não pode renomear o grupo; owner pode", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (
@@ -110,7 +110,7 @@ test("membro comum não pode renomear o grupo; owner pode", async () => {
 });
 
 test("owner não pode saír sem transferir/excluir (409); membro comum pode saír (204)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (
@@ -136,7 +136,7 @@ test("owner não pode saír sem transferir/excluir (409); membro comum pode saí
 });
 
 test("só owner pode excluir o grupo; exclusão remove membros e convites", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (
@@ -158,7 +158,7 @@ test("só owner pode excluir o grupo; exclusão remove membros e convites", asyn
 });
 
 test("convite: criar exige owner/admin; membro comum recebe 403", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const asOwner = await app.inject({ method: "POST", url: `/v1/groups/${group.id}/invites`, headers: auth("owner1") });
@@ -180,7 +180,7 @@ test("convite: criar exige owner/admin; membro comum recebe 403", async () => {
 });
 
 test("aceitar convite é idempotente para o mesmo usuário", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (
@@ -204,7 +204,7 @@ test("aceitar convite é idempotente para o mesmo usuário", async () => {
 });
 
 test("convite esgotado (maxUses) rejeita um segundo usuário diferente", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (
@@ -229,7 +229,7 @@ test("convite esgotado (maxUses) rejeita um segundo usuário diferente", async (
 });
 
 test("token de convite inexistente/inválido responde 409", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "POST",
@@ -243,7 +243,7 @@ test("token de convite inexistente/inválido responde 409", async () => {
 });
 
 test("convite revogado não aparece na listagem e não pode mais ser aceito", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const invite = (

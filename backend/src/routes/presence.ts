@@ -11,14 +11,14 @@ function requireAuth(request: { auth?: { uid: string } }): string {
 export function registerPresenceRoutes(app: FastifyInstance, repo: GroupsRepository, presence: PresenceStore): void {
   app.post<{ Params: { groupId: string } }>("/v1/groups/:groupId/presence/heartbeat", async (request, reply) => {
     const userId = requireAuth(request);
-    requireMembership(repo, request.params.groupId, userId);
+    await requireMembership(repo, request.params.groupId, userId);
     presence.heartbeat(request.params.groupId, userId);
     reply.code(204);
   });
 
   app.get<{ Params: { groupId: string } }>("/v1/groups/:groupId/presence", async (request) => {
     const userId = requireAuth(request);
-    requireMembership(repo, request.params.groupId, userId);
+    await requireMembership(repo, request.params.groupId, userId);
     return { members: presence.list(request.params.groupId) };
   });
 }

@@ -29,70 +29,70 @@ export function registerGroupRoutes(app: FastifyInstance, repo: GroupsRepository
   app.post("/v1/groups", async (request, reply) => {
     const userId = requireAuth(request);
     const body = parseOrThrow(createGroupSchema, request.body);
-    const group = repo.createGroup(body.name, userId);
+    const group = await repo.createGroup(body.name, userId);
     reply.code(201);
     return group;
   });
 
   app.get("/v1/groups", async (request) => {
     const userId = requireAuth(request);
-    return { groups: repo.listGroupsForUser(userId) };
+    return { groups: await repo.listGroupsForUser(userId) };
   });
 
   app.get<{ Params: { groupId: string } }>("/v1/groups/:groupId", async (request) => {
     const userId = requireAuth(request);
-    requireMembership(repo, request.params.groupId, userId);
+    await requireMembership(repo, request.params.groupId, userId);
     return repo.getGroupForUser(request.params.groupId, userId);
   });
 
   app.patch<{ Params: { groupId: string } }>("/v1/groups/:groupId", async (request) => {
     const userId = requireAuth(request);
-    const role = requireMembership(repo, request.params.groupId, userId);
+    const role = await requireMembership(repo, request.params.groupId, userId);
     requireRole(role, ["owner", "admin"]);
     const body = parseOrThrow(updateGroupSchema, request.body);
-    repo.updateGroupName(request.params.groupId, body.name);
+    await repo.updateGroupName(request.params.groupId, body.name);
     return repo.getGroupForUser(request.params.groupId, userId);
   });
 
   app.delete<{ Params: { groupId: string } }>("/v1/groups/:groupId", async (request, reply) => {
     const userId = requireAuth(request);
-    const role = requireMembership(repo, request.params.groupId, userId);
+    const role = await requireMembership(repo, request.params.groupId, userId);
     requireRole(role, ["owner"]);
-    repo.deleteGroup(request.params.groupId);
+    await repo.deleteGroup(request.params.groupId);
     reply.code(204);
   });
 
   app.post<{ Params: { groupId: string } }>("/v1/groups/:groupId/leave", async (request, reply) => {
     const userId = requireAuth(request);
-    requireMembership(repo, request.params.groupId, userId);
-    repo.leaveGroup(request.params.groupId, userId);
+    await requireMembership(repo, request.params.groupId, userId);
+    await repo.leaveGroup(request.params.groupId, userId);
     reply.code(204);
   });
 
   app.post<{ Params: { groupId: string } }>("/v1/groups/:groupId/invites", async (request, reply) => {
     const userId = requireAuth(request);
-    const role = requireMembership(repo, request.params.groupId, userId);
+    const role = await requireMembership(repo, request.params.groupId, userId);
     requireRole(role, ["owner", "admin"]);
     const body = parseOrThrow(createInviteSchema, request.body);
-    const invite = repo.createInvite(request.params.groupId, userId, body.expiresInMinutes, body.maxUses);
+    const invite = await repo.createInvite(request.params.groupId, userId, body.expiresInMinutes, body.maxUses);
     reply.code(201);
     return invite;
   });
 
   app.get<{ Params: { groupId: string } }>("/v1/groups/:groupId/invites", async (request) => {
     const userId = requireAuth(request);
-    const role = requireMembership(repo, request.params.groupId, userId);
+    const role = await requireMembership(repo, request.params.groupId, userId);
     requireRole(role, ["owner", "admin"]);
-    return { invites: repo.listActiveInvites(request.params.groupId) };
+    return { invites: await repo.listActiveInvites(request.params.groupId) };
   });
 
   app.delete<{ Params: { groupId: string; inviteId: string } }>(
     "/v1/groups/:groupId/invites/:inviteId",
     async (request, reply) => {
       const userId = requireAuth(request);
-      const role = requireMembership(repo, request.params.groupId, userId);
+      const role = await requireMembership(repo, request.params.groupId, userId);
       requireRole(role, ["owner", "admin"]);
-      repo.revokeInvite(request.params.groupId, request.params.inviteId);
+      await repo.revokeInvite(request.params.groupId, request.params.inviteId);
       reply.code(204);
     },
   );

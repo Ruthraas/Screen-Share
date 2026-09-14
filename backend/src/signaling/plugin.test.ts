@@ -23,7 +23,7 @@ async function build(
 ): Promise<{ app: FastifyInstance; baseUrl: string }> {
   const app = buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],

@@ -11,7 +11,7 @@ import type { OAuthProviderName, OAuthProvider } from "../auth/oauthProviders.js
 
 const SIGNING_SECRET = "a".repeat(32);
 
-function build(options: { withGoogleConfigured?: boolean } = {}) {
+async function build(options: { withGoogleConfigured?: boolean } = {}) {
   const providers: Record<OAuthProviderName, OAuthProvider> = {
     google: fakeOAuthProvider("google", {
       "code-1": { providerAccountId: "g1", email: "oauth@example.com", displayName: "Fulano de Tal", avatarUrl: "https://lh3.googleusercontent.com/foto.jpg" },
@@ -27,7 +27,7 @@ function build(options: { withGoogleConfigured?: boolean } = {}) {
 
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig,
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
@@ -44,7 +44,7 @@ function hashParams(location: string): URLSearchParams {
 // --- registro / login / refresh / logout -----------------------------------
 
 test("registro cria usuário e devolve access+refresh token", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "POST",
@@ -64,7 +64,7 @@ test("registro cria usuário e devolve access+refresh token", async () => {
 });
 
 test("registro com e-mail já usado falha com 409", async () => {
-  const app = build();
+  const app = await build();
   try {
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
     const second = await app.inject({
@@ -79,7 +79,7 @@ test("registro com e-mail já usado falha com 409", async () => {
 });
 
 test("registro com senha curta falha com 422 (validação Zod)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "POST",
@@ -93,7 +93,7 @@ test("registro com senha curta falha com 422 (validação Zod)", async () => {
 });
 
 test("login com senha certa funciona", async () => {
-  const app = build();
+  const app = await build();
   try {
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
     const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "a@b.com", password: "senha-forte-123" } });
@@ -105,7 +105,7 @@ test("login com senha certa funciona", async () => {
 });
 
 test("login com senha errada e login de usuário inexistente dão a mesma resposta genérica (401)", async () => {
-  const app = build();
+  const app = await build();
   try {
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
 
@@ -122,7 +122,7 @@ test("login com senha errada e login de usuário inexistente dão a mesma respos
 });
 
 test("refresh emite nova sessão e revoga (rotaciona) o token antigo", async () => {
-  const app = build();
+  const app = await build();
   try {
     const registered = (
       await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } })
@@ -141,7 +141,7 @@ test("refresh emite nova sessão e revoga (rotaciona) o token antigo", async () 
 });
 
 test("refresh com token inválido/inexistente falha com 401", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "POST", url: "/v1/auth/refresh", payload: { refreshToken: "token-que-nao-existe" } });
     assert.equal(response.statusCode, 401);
@@ -151,7 +151,7 @@ test("refresh com token inválido/inexistente falha com 401", async () => {
 });
 
 test("logout revoga o refresh token; logout de novo (idempotente) ainda responde 204", async () => {
-  const app = build();
+  const app = await build();
   try {
     const registered = (
       await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } })
@@ -173,7 +173,7 @@ test("logout revoga o refresh token; logout de novo (idempotente) ainda responde
 // --- rate limit ---------------------------------------------------------------
 
 test("login tem rate limit por IP: excede o máximo responde 429 com o envelope de erro do contrato", async () => {
-  const app = build();
+  const app = await build();
   try {
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
 
@@ -190,7 +190,7 @@ test("login tem rate limit por IP: excede o máximo responde 429 com o envelope 
 });
 
 test("oauth start tem rate limit por IP independente do de login", async () => {
-  const app = build();
+  const app = await build();
   try {
     let last;
     for (let i = 0; i < 21; i++) {
@@ -203,7 +203,7 @@ test("oauth start tem rate limit por IP independente do de login", async () => {
 });
 
 test("rotas fora de /v1/auth/* não têm rate limit (ex.: /health)", async () => {
-  const app = build();
+  const app = await build();
   try {
     let last;
     for (let i = 0; i < 30; i++) {
@@ -218,7 +218,7 @@ test("rotas fora de /v1/auth/* não têm rate limit (ex.: /health)", async () =>
 // --- OAuth -------------------------------------------------------------------
 
 test("oauth start com provedor não configurado responde 404", async () => {
-  const app = build({ withGoogleConfigured: false });
+  const app = await build({ withGoogleConfigured: false });
   try {
     const response = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     assert.equal(response.statusCode, 404);
@@ -228,7 +228,7 @@ test("oauth start com provedor não configurado responde 404", async () => {
 });
 
 test("oauth start com provedor desconhecido responde 404", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/v1/auth/oauth/facebook/start" });
     assert.equal(response.statusCode, 404);
@@ -238,7 +238,7 @@ test("oauth start com provedor desconhecido responde 404", async () => {
 });
 
 test("oauth start redireciona pro provedor com state assinado", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     assert.equal(response.statusCode, 302);
@@ -251,7 +251,7 @@ test("oauth start redireciona pro provedor com state assinado", async () => {
 });
 
 test("fluxo OAuth completo: start -> callback cria/loga usuário e devolve sessão no fragmento", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;
@@ -274,7 +274,7 @@ test("fluxo OAuth completo: start -> callback cria/loga usuário e devolve sess�
 });
 
 test("issue #70: refresh depois de um login OAuth continua carregando displayName/avatarUrl no novo token", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;
@@ -291,7 +291,7 @@ test("issue #70: refresh depois de um login OAuth continua carregando displayNam
 });
 
 test("oauth start com target=desktop embute o target no state; callback redireciona pro deep link desktop", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start?target=desktop" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;
@@ -307,7 +307,7 @@ test("oauth start com target=desktop embute o target no state; callback redireci
 });
 
 test("oauth start sem target (ou com target inválido) mantém o navegador como destino, igual ao comportamento de antes", async () => {
-  const app = build();
+  const app = await build();
   try {
     const semTarget = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     const stateSemTarget = new URL(semTarget.headers.location as string).searchParams.get("state")!;
@@ -330,7 +330,7 @@ test("oauth start sem target (ou com target inválido) mantém o navegador como 
 });
 
 test("erro no fluxo desktop (ex.: missing_code) ainda volta pro deep link desktop, não pro navegador", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start?target=desktop" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;
@@ -345,7 +345,7 @@ test("erro no fluxo desktop (ex.: missing_code) ainda volta pro deep link deskto
 });
 
 test("callback com state adulterado/inválido redireciona com error=invalid_state", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/callback?code=code-1&state=lixo-invalido" });
     assert.equal(response.statusCode, 302);
@@ -356,7 +356,7 @@ test("callback com state adulterado/inválido redireciona com error=invalid_stat
 });
 
 test("callback com erro do provedor nunca repassa o valor crú do erro", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/callback?error=access_denied&error_description=o+usuario+cancelou" });
     assert.equal(response.statusCode, 302);
@@ -370,7 +370,7 @@ test("callback com erro do provedor nunca repassa o valor crú do erro", async (
 });
 
 test("callback sem code redireciona com error=missing_code", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;
@@ -383,7 +383,7 @@ test("callback sem code redireciona com error=missing_code", async () => {
 });
 
 test("callback com falha na troca de código (provedor indisponível) redireciona com error=provider_error", async () => {
-  const app = build();
+  const app = await build();
   try {
     const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
     const state = new URL(start.headers.location as string).searchParams.get("state")!;

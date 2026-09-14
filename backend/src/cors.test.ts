@@ -11,10 +11,10 @@ const TAURI_ORIGIN = "https://tauri.localhost";
 const TAURI_ORIGIN_HTTP = "http://tauri.localhost";
 const UNKNOWN_ORIGIN = "https://evil.example.com";
 
-function build() {
+async function build() {
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: [DEV_ORIGIN, TAURI_ORIGIN, TAURI_ORIGIN_HTTP],
@@ -23,7 +23,7 @@ function build() {
 }
 
 test("origem de dev autorizada recebe Access-Control-Allow-Origin e consegue chamar /v1/groups", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "GET",
@@ -38,7 +38,7 @@ test("origem de dev autorizada recebe Access-Control-Allow-Origin e consegue cha
 });
 
 test("origem do Tauri (https://tauri.localhost) é autorizada", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "GET",
@@ -53,7 +53,7 @@ test("origem do Tauri (https://tauri.localhost) é autorizada", async () => {
 });
 
 test("origem do Tauri sem HTTPS (http://tauri.localhost, WebView2 real — issue #69) também é autorizada", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "GET",
@@ -68,7 +68,7 @@ test("origem do Tauri sem HTTPS (http://tauri.localhost, WebView2 real — issue
 });
 
 test("preflight OPTIONS com origem http://tauri.localhost é interceptado pelo CORS (204), não cai no 401 do auth", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "OPTIONS",
@@ -86,7 +86,7 @@ test("preflight OPTIONS com origem http://tauri.localhost é interceptado pelo C
 });
 
 test("origem desconhecida é rejeitada (sem cabeçalho CORS refletido)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "GET",
@@ -100,7 +100,7 @@ test("origem desconhecida é rejeitada (sem cabeçalho CORS refletido)", async (
 });
 
 test("preflight OPTIONS permite Authorization e Content-Type sem exigir token", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "OPTIONS",
@@ -122,7 +122,7 @@ test("preflight OPTIONS permite Authorization e Content-Type sem exigir token", 
 });
 
 test("preflight de origem desconhecida não autoriza o método", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "OPTIONS",
@@ -140,7 +140,7 @@ test("preflight de origem desconhecida não autoriza o método", async () => {
 });
 
 test("/health continua público mesmo com origem desconhecida", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/health", headers: { origin: UNKNOWN_ORIGIN } });
     assert.equal(response.statusCode, 200);
@@ -150,7 +150,7 @@ test("/health continua público mesmo com origem desconhecida", async () => {
 });
 
 test("requisição sem header Origin (ex.: curl) não é afetada pelo CORS", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/health" });
     assert.equal(response.statusCode, 200);

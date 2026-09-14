@@ -16,7 +16,7 @@ test("configuração válida: usa defaults e mantém os valores explícitos", ()
   assert.equal(config.host, "0.0.0.0");
   assert.equal(config.port, 8787);
   assert.equal(config.signaling.path, "/ws");
-  assert.equal(config.database.path, ":memory:");
+  assert.equal(config.database.url, ":memory:");
   assert.equal(config.turn.keyId, "turn-key-id-exemplo");
   assert.equal(config.turn.apiToken, "super-secreto");
   assert.equal(config.auth.oauthRedirectBaseUrl, "http://127.0.0.1:8787");
@@ -83,13 +83,46 @@ test("configuração ausente: variável obrigatória faltando falha com mensagem
     () => loadConfig({ TURN_KEY_ID: "turn-key-id-exemplo", TURN_KEY_API_TOKEN: "x" }),
     (err: unknown) => {
       assert.ok(err instanceof ConfigError);
-      assert.match((err as Error).message, /DATABASE_PATH/);
       assert.match((err as Error).message, /SESSION_SIGNING_SECRET/);
       assert.match((err as Error).message, /PASSWORD_PEPPER/);
       assert.match((err as Error).message, /OAUTH_REDIRECT_BASE_URL/);
       return true;
     },
   );
+});
+
+test("configuração ausente: nem DATABASE_PATH nem TURSO_DATABASE_URL falha com mensagem clara (issue #82)", () => {
+  const { DATABASE_PATH: _omit, ...envSemBanco } = validEnv;
+  assert.throws(
+    () => loadConfig(envSemBanco),
+    (err: unknown) => {
+      assert.ok(err instanceof ConfigError);
+      assert.match((err as Error).message, /DATABASE_PATH/);
+      assert.match((err as Error).message, /TURSO_DATABASE_URL/);
+      return true;
+    },
+  );
+});
+
+test("TURSO_DATABASE_URL configurado vence sobre DATABASE_PATH e carrega o authToken (issue #82)", () => {
+  const config = loadConfig({
+    ...validEnv,
+    TURSO_DATABASE_URL: "libsql://screenshare-exemplo.turso.io",
+    TURSO_AUTH_TOKEN: "token-turso-exemplo",
+  });
+  assert.equal(config.database.url, "libsql://screenshare-exemplo.turso.io");
+  assert.equal(config.database.authToken, "token-turso-exemplo");
+});
+
+test("resumo público oculta o authToken do Turso quando presente", () => {
+  const config = loadConfig({
+    ...validEnv,
+    TURSO_DATABASE_URL: "libsql://screenshare-exemplo.turso.io",
+    TURSO_AUTH_TOKEN: "token-turso-secreto",
+  });
+  const serialized = JSON.stringify(toPublicSummary(config));
+  assert.doesNotMatch(serialized, /token-turso-secreto/);
+  assert.match(serialized, /screenshare-exemplo\.turso\.io/, "a URL em si não é segredo");
 });
 
 test("configuração inválida: PORT fora do intervalo falha", () => {

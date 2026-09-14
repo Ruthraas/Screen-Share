@@ -102,7 +102,10 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
     }
 
     // #39: nunca confiar em groupId/uid declarados sem consultar a policy.
-    if (!opts.groupsRepo.getRole(groupId, uid)) {
+    // Issue #82: getRole agora bate num banco remoto (assíncrono) — await
+    // aqui é essencial, `!promise` sempre seria falso (Promise é um objeto,
+    // sempre "truthy"), o que faria essa checagem nunca bloquear ninguém.
+    if (!(await opts.groupsRepo.getRole(groupId, uid))) {
       send(socket, envelope(groupId, "error", { code: "forbidden", message: "Você não é membro deste grupo." }));
       socket.close(4403, "forbidden");
       return;
@@ -133,7 +136,17 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
       if (socket.readyState === socket.OPEN) socket.ping();
     }, heartbeatIntervalMs);
 
-    socket.on("message", (raw: Buffer) => {
+    // Issue #82: getRole virou uma chamada de rede (Turso), não mais uma
+    // leitura local instantânea — o handler precisou virar async pra dar
+    // `await` nela. Efeito colateral honesto: se o mesmo socket mandar
+    // mensagens em rajada, o `await` abaixo cede o loop de eventos entre
+    // uma mensagem e outra, então a ORDEM de processamento entre mensagens
+    // diferentes já não é mais estritamente garantida (cada uma "compete"
+    // pra terminar sua própria checagem). Não existia essa garantia forte
+    // entre sockets diferentes antes também; aceitável pro protocolo atual
+    // (ICE candidates já toleram chegar fora de ordem), mas registrado
+    // aqui caso vire problema real no futuro.
+    socket.on("message", async (raw: Buffer) => {
       let message: ClientMessage;
       try {
         message = parseClientMessage(JSON.parse(raw.toString()));
@@ -144,7 +157,7 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
 
       // Revalida a cada mensagem, não só na conexão: se o usuário saiu do
       // grupo enquanto conectado, a sessão para de poder enviar/receber.
-      if (!opts.groupsRepo.getRole(groupId, uid)) {
+      if (!(await opts.groupsRepo.getRole(groupId, uid))) {
         send(socket, envelope(groupId, "error", { code: "forbidden", message: "Você não é mais membro deste grupo." }));
         // O close() abaixo dispara o handler "close" registrado mais
         // adiante, que já faz rooms.leave() + broadcast de peer-left — não

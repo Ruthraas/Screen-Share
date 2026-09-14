@@ -20,7 +20,7 @@ export type Role = "owner" | "admin" | "member";
  * *owner só sai depois de transferir a posse ou excluir o grupo (issue #33).
  */
 export interface MembershipLookup {
-  getRole(groupId: string, userId: string): Role | undefined;
+  getRole(groupId: string, userId: string): Promise<Role | undefined>;
 }
 
 /**
@@ -28,9 +28,11 @@ export interface MembershipLookup {
  * inexistente e "você não é membro" respondem o mesmo NotFoundError —
  * por padrão, acesso é negado e a existência do grupo não é revelada a
  * quem não participa dele.
+ *
+ * Assíncrona desde a issue #82 (`getRole` passou a bater num banco remoto).
  */
-export function requireMembership(repo: MembershipLookup, groupId: string, userId: string): Role {
-  const role = repo.getRole(groupId, userId);
+export async function requireMembership(repo: MembershipLookup, groupId: string, userId: string): Promise<Role> {
+  const role = await repo.getRole(groupId, userId);
   if (!role) {
     throw new NotFoundError("Grupo não encontrado.");
   }

@@ -4,15 +4,15 @@ import { requireMembership, requireRole, type MembershipLookup, type Role } from
 import { ForbiddenError, NotFoundError } from "../errors.js";
 
 function repoWith(role: Role | undefined): MembershipLookup {
-  return { getRole: () => role };
+  return { getRole: async () => role };
 }
 
-test("requireMembership lança NotFoundError quando o usuário não é membro", () => {
-  assert.throws(() => requireMembership(repoWith(undefined), "g1", "u1"), NotFoundError);
+test("requireMembership lança NotFoundError quando o usuário não é membro", async () => {
+  await assert.rejects(requireMembership(repoWith(undefined), "g1", "u1"), NotFoundError);
 });
 
-test("requireMembership devolve o papel quando o usuário é membro", () => {
-  const role = requireMembership(repoWith("admin"), "g1", "u1");
+test("requireMembership devolve o papel quando o usuário é membro", async () => {
+  const role = await requireMembership(repoWith("admin"), "g1", "u1");
   assert.equal(role, "admin");
 });
 

@@ -17,8 +17,8 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  const db = openDatabase(config.database.path);
-  const applied = migrateUp(db);
+  const db = await openDatabase(config.database.url, config.database.authToken);
+  const applied = await migrateUp(db);
 
   const verifier = new SessionTokenVerifier(config.auth.sessionSigningSecret);
   const turnProvider = cloudflareTurnProvider(config.turn.keyId, config.turn.apiToken);

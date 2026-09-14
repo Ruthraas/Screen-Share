@@ -7,10 +7,10 @@ import { testAuthConfig } from "./testing/testAuthConfig.js";
 import { fakeTurnProvider } from "./testing/fakeTurnProvider.js";
 import { Metrics } from "./observability/metrics.js";
 
-function build(overrides: Partial<BuildServerOptions> = {}) {
+async function build(overrides: Partial<BuildServerOptions> = {}) {
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
@@ -20,7 +20,7 @@ function build(overrides: Partial<BuildServerOptions> = {}) {
 }
 
 test("GET /health responde 200 com status ok (sem token)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/health" });
     assert.equal(response.statusCode, 200);
@@ -31,7 +31,7 @@ test("GET /health responde 200 com status ok (sem token)", async () => {
 });
 
 test("GET /ready responde 200 com banco ok (sem token)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/ready" });
     assert.equal(response.statusCode, 200);
@@ -42,8 +42,8 @@ test("GET /ready responde 200 com banco ok (sem token)", async () => {
 });
 
 test("GET /ready responde 503 quando o banco está indisponível", async () => {
-  const db = createTestDb();
-  const app = build({ db });
+  const db = await createTestDb();
+  const app = await build({ db });
   try {
     db.close();
     const response = await app.inject({ method: "GET", url: "/ready" });
@@ -55,7 +55,7 @@ test("GET /ready responde 503 quando o banco está indisponível", async () => {
 });
 
 test("erro nativo do Fastify (ex.: corpo vazio com Content-Type: application/json) respeita o statusCode em vez de virar 500", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "POST",
@@ -70,7 +70,7 @@ test("erro nativo do Fastify (ex.: corpo vazio com Content-Type: application/jso
 });
 
 test("rota inexistente sem token responde 401 (autenticação roda antes do roteamento)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/rota-que-nao-existe" });
     assert.equal(response.statusCode, 401);
@@ -80,7 +80,7 @@ test("rota inexistente sem token responde 401 (autenticação roda antes do rote
 });
 
 test("rota inexistente com token válido responde 404", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({
       method: "GET",
@@ -96,7 +96,7 @@ test("rota inexistente com token válido responde 404", async () => {
 // --- issue #44: métricas ----------------------------------------------------
 
 test("GET /metrics é público e devolve contadores/gauges (sem dado sensível)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const response = await app.inject({ method: "GET", url: "/metrics" });
     assert.equal(response.statusCode, 200);
@@ -110,7 +110,7 @@ test("GET /metrics é público e devolve contadores/gauges (sem dado sensível)"
 
 test("erros incrementam errors_total{code=...} — rate_limited e not_found ficam em contadores separados", async () => {
   const metrics = new Metrics();
-  const app = build({ metrics, rateLimits: { windowMs: 60_000, register: 1, login: 10, oauth: 20, session: 30, turn: 10, wsConnect: 20 } });
+  const app = await build({ metrics, rateLimits: { windowMs: 60_000, register: 1, login: 10, oauth: 20, session: 30, turn: 10, wsConnect: 20 } });
   try {
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
     await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "c@d.com", password: "senha-forte-123" } }); // excede o limite (max=1)
@@ -127,7 +127,7 @@ test("erros incrementam errors_total{code=...} — rate_limited e not_found fica
 
 test("http_responses_total é contado por classe de status", async () => {
   const metrics = new Metrics();
-  const app = build({ metrics });
+  const app = await build({ metrics });
   try {
     await app.inject({ method: "GET", url: "/health" });
     await app.inject({ method: "GET", url: "/health" });
@@ -144,7 +144,7 @@ test("http_responses_total é contado por classe de status", async () => {
 // --- issue #43: limites configuráveis e corpo máximo ------------------------
 
 test("limites de rate limit são configuráveis: valor customizado (não o default) é o que vale", async () => {
-  const app = build({ rateLimits: { windowMs: 60_000, register: 1, login: 10, oauth: 20, session: 30, turn: 10, wsConnect: 20 } });
+  const app = await build({ rateLimits: { windowMs: 60_000, register: 1, login: 10, oauth: 20, session: 30, turn: 10, wsConnect: 20 } });
   try {
     const first = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { email: "a@b.com", password: "senha-forte-123" } });
     assert.equal(first.statusCode, 201);
@@ -156,7 +156,7 @@ test("limites de rate limit são configuráveis: valor customizado (não o defau
 });
 
 test("corpo maior que maxBodyBytes é rejeitado (413), não vira 500", async () => {
-  const app = build({ maxBodyBytes: 32 });
+  const app = await build({ maxBodyBytes: 32 });
   try {
     const response = await app.inject({
       method: "POST",
