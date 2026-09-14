@@ -29,6 +29,8 @@ async function main(): Promise<void> {
     turnProvider,
     corsAllowedOrigins: config.cors.allowedOrigins,
     signalingPath: config.signaling.path,
+    rateLimits: config.rateLimits,
+    maxBodyBytes: config.maxBodyBytes,
   });
   app.log.info({ config: toPublicSummary(config), migrationsApplied: applied }, "configuração carregada");
 

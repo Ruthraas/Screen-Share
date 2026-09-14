@@ -73,6 +73,29 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default("http://127.0.0.1:5173,https://tauri.localhost,http://tauri.localhost"),
+
+  // Limites de uso/anti-abuso (issue #43) — configuráveis (critério de
+  // aceite explícito da issue), mas com default igual ao que já estava
+  // hardcoded antes: nenhum comportamento muda pra quem não define nada.
+  // Uma janela só (`RATE_LIMIT_WINDOW_MS`) compartilhada por todos os
+  // limites — variar a janela por rota também, além do máximo, multiplica
+  // combinações sem ganho real pra uma equipe de 2 pessoas.
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().positive().default(5),
+  RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(10),
+  RATE_LIMIT_OAUTH_MAX: z.coerce.number().int().positive().default(20),
+  RATE_LIMIT_SESSION_MAX: z.coerce.number().int().positive().default(30),
+  RATE_LIMIT_TURN_MAX: z.coerce.number().int().positive().default(10),
+  // Conexões WS (não HTTP — enforçado com um limitador próprio em
+  // src/signaling/connectRateLimiter.ts, não pelo @fastify/rate-limit) —
+  // mesma janela, limite próprio porque a natureza do abuso é diferente
+  // (tentativa de handshake, não requisição HTTP completa).
+  RATE_LIMIT_WS_CONNECT_MAX: z.coerce.number().int().positive().default(20),
+
+  // Corpo máximo de requisição HTTP (issue #43, "limites de payload") —
+  // default é o mesmo já embutido no Fastify (1 MiB); só explicitamos e
+  // deixamos configurável em vez de depender de um default implícito.
+  MAX_BODY_BYTES: z.coerce.number().int().positive().default(1_048_576),
 });
 
 export interface OAuthProviderCredentials {
@@ -103,6 +126,16 @@ export interface AppConfig {
   cors: {
     allowedOrigins: string[];
   };
+  rateLimits: {
+    windowMs: number;
+    register: number;
+    login: number;
+    oauth: number;
+    session: number;
+    turn: number;
+    wsConnect: number;
+  };
+  maxBodyBytes: number;
 }
 
 export class ConfigError extends Error {
@@ -167,6 +200,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         .map((origin) => origin.trim())
         .filter((origin) => origin.length > 0),
     },
+    rateLimits: {
+      windowMs: parsed.RATE_LIMIT_WINDOW_MS,
+      register: parsed.RATE_LIMIT_REGISTER_MAX,
+      login: parsed.RATE_LIMIT_LOGIN_MAX,
+      oauth: parsed.RATE_LIMIT_OAUTH_MAX,
+      session: parsed.RATE_LIMIT_SESSION_MAX,
+      turn: parsed.RATE_LIMIT_TURN_MAX,
+      wsConnect: parsed.RATE_LIMIT_WS_CONNECT_MAX,
+    },
+    maxBodyBytes: parsed.MAX_BODY_BYTES,
   };
 }
 
@@ -193,5 +236,7 @@ export function toPublicSummary(config: AppConfig): Record<string, unknown> {
       apiToken: REDACTED,
     },
     cors: { allowedOrigins: config.cors.allowedOrigins },
+    rateLimits: config.rateLimits,
+    maxBodyBytes: config.maxBodyBytes,
   };
 }

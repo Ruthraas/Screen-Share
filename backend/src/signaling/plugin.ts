@@ -5,6 +5,8 @@ import type { WebSocket } from "ws";
 import { TokenVerificationError, type TokenVerifier } from "../auth/verifier.js";
 import type { GroupsRepository } from "../groups/repository.js";
 import { SignalingRooms } from "./room.js";
+import { ConnectRateLimiter } from "./connectRateLimiter.js";
+import type { Metrics } from "../observability/metrics.js";
 import {
   SENSITIVE_EVENT_TYPES,
   SIGNALING_PROTOCOL_VERSION,
@@ -30,9 +32,15 @@ export interface SignalingPluginOptions {
    * default); nunca configure isso menor que o RTT esperado dos clientes.
    */
   heartbeatIntervalMs?: number;
+  /** Limite de tentativas de conexão por IP (issue #43) — ver connectRateLimiter.ts. */
+  connectRateLimiter?: ConnectRateLimiter;
+  /** Contadores/gauges de operação (issue #44) — opcional pra não obrigar todo teste a passar um. */
+  metrics?: Metrics;
 }
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+const DEFAULT_CONNECT_RATE_LIMIT_MAX = 20;
+const DEFAULT_CONNECT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function hasTarget(message: ClientMessage): message is ClientMessage & { to: string } {
   return "to" in message;
@@ -58,8 +66,18 @@ function envelope(groupId: string, type: ServerEnvelope["type"], payload: unknow
 export async function registerSignaling(app: FastifyInstance, opts: SignalingPluginOptions): Promise<void> {
   await app.register(websocketPlugin);
   const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+  const connectRateLimiter = opts.connectRateLimiter ?? new ConnectRateLimiter(DEFAULT_CONNECT_RATE_LIMIT_MAX, DEFAULT_CONNECT_RATE_LIMIT_WINDOW_MS);
 
   app.get(opts.path, { websocket: true }, async (socket: WebSocket, request: FastifyRequest) => {
+    // Primeiro gate, antes de qualquer parsing — protege o handshake em si
+    // contra rajada, independente de token/groupId serem válidos.
+    if (!connectRateLimiter.allow(request.ip)) {
+      opts.metrics?.increment("ws_connect_rate_limited_total");
+      send(socket, envelope("", "error", { code: "rate_limited", message: "Muitas tentativas de conexão. Tente novamente em instantes." }));
+      socket.close(4429, "rate_limited");
+      return;
+    }
+
     const query = request.query as Record<string, string | undefined>;
     const token = query.token;
     const groupId = query.groupId;
@@ -92,6 +110,8 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
 
     const reconnected = opts.rooms.join(groupId, uid, socket);
     request.log.info({ groupId, uid, reconnected }, "signaling: participante entrou");
+    opts.metrics?.increment("ws_connections_total");
+    opts.metrics?.incrementGauge("ws_connections_active");
 
     send(socket, envelope(groupId, "joined", { members: opts.rooms.membersOf(groupId) }));
     opts.rooms.broadcast(
@@ -160,6 +180,7 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
 
     socket.on("close", () => {
       clearInterval(heartbeat);
+      opts.metrics?.incrementGauge("ws_connections_active", -1);
       // leave() só remove (e devolve true) se esta ainda for a conexão
       // atual do uid — se uma reconexão já substituiu esta pela nova
       // (issue #42), o close da conexão antiga não deve avisar os outros

@@ -16,18 +16,31 @@ const OAUTH_STATE_TTL_MS = 10 * 60_000; // 10 min pra completar o fluxo de redir
  * públicas e sem autenticação do backend, logo as mais expostas a
  * automação (força bruta em login, criação em massa de conta, hammering
  * no `/start`/`/callback` do OAuth, que faz uma chamada de rede de verdade
- * pro provedor). Valores fixos de propósito (mesma filosofia de
- * `OAUTH_STATE_TTL_MS` acima) — não é config de ambiente porque não há
- * cenário legítimo hoje que precise ajustar isso por deploy.
+ * pro provedor). Configurável via env (issue #43,
+ * `RATE_LIMIT_*`/`config.rateLimits`) — os defaults aqui só cobrem quem
+ * chama `registerAuthRoutes` sem passar nada (ex.: testes).
  */
-const RATE_LIMITS = {
-  register: { max: 5, timeWindow: "1 minute" },
-  login: { max: 10, timeWindow: "1 minute" },
-  refresh: { max: 30, timeWindow: "1 minute" },
-  logout: { max: 30, timeWindow: "1 minute" },
-  oauthStart: { max: 20, timeWindow: "1 minute" },
-  oauthCallback: { max: 20, timeWindow: "1 minute" },
-} as const;
+const DEFAULT_RATE_LIMITS: AppConfig["rateLimits"] = {
+  windowMs: 60_000,
+  register: 5,
+  login: 10,
+  oauth: 20,
+  session: 30,
+  turn: 10,
+  wsConnect: 20,
+};
+
+function buildAuthRateLimits(rateLimits: AppConfig["rateLimits"]) {
+  const timeWindow = rateLimits.windowMs;
+  return {
+    register: { max: rateLimits.register, timeWindow },
+    login: { max: rateLimits.login, timeWindow },
+    refresh: { max: rateLimits.session, timeWindow },
+    logout: { max: rateLimits.session, timeWindow },
+    oauthStart: { max: rateLimits.oauth, timeWindow },
+    oauthCallback: { max: rateLimits.oauth, timeWindow },
+  };
+}
 
 const registerSchema = z.object({ email: z.string().email(), password: z.string().min(8).max(200) });
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1).max(200) });
@@ -78,7 +91,10 @@ export function registerAuthRoutes(
   userRepo: UserRepository,
   authConfig: AppConfig["auth"],
   providers: Record<OAuthProviderName, OAuthProvider> = OAUTH_PROVIDERS,
+  rateLimits: AppConfig["rateLimits"] = DEFAULT_RATE_LIMITS,
 ): void {
+  const RATE_LIMITS = buildAuthRateLimits(rateLimits);
+
   function issueSession(identity: AuthIdentity): { accessToken: string; refreshToken: string } {
     const accessToken = issueAccessToken(identity, authConfig.sessionSigningSecret);
     const refreshValue = newRefreshTokenValue();
