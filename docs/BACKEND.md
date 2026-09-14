@@ -515,11 +515,56 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     de erro já visto com Google/Discord antes neste projeto; corrigido
     pra `TURN_KEY_ID=`/`TURN_KEY_API_TOKEN=` as duas vezes (chave errada
     da Calls/SFU, depois a chave certa da Realtime TURN).
+- **#43 + #44 — Limites configuráveis, WS connect limit e métricas
+  (2026-09-14)**: feitas juntas por compartilharem a mesma base de
+  métricas. Decisão completa em `docs/backend/ARQUITETURA.md`.
+  - **Rate limit HTTP virou configurável** (`RATE_LIMIT_*` no `.env`) —
+    antes fixo no código; default idêntico ao valor anterior, então nada
+    muda pra quem não define nada.
+  - **Novo: limite de conexão WebSocket por IP** (`src/signaling/connectRateLimiter.ts`,
+    janela deslizante própria — não `@fastify/rate-limit`, que atua sobre
+    requisição HTTP normal, não o upgrade de protocolo do `/ws`). Excede
+    o limite (`RATE_LIMIT_WS_CONNECT_MAX`, default 20/min) fecha com
+    código `4429` antes até de validar token/groupId.
+  - **Novo: corpo máximo de requisição** (`MAX_BODY_BYTES`, default 1 MiB
+    — já era o comportamento padrão do Fastify, agora explícito e
+    configurável).
+  - **Novo: `src/observability/metrics.ts`** — contadores/gauges em
+    memória (perde estado no restart, mesma escolha de `SignalingRooms`/
+    `PresenceStore`), expostos em `GET /metrics` (JSON simples, público
+    como `/health`/`/ready` — só números, nunca dado de usuário).
+    `http_responses_total{status_class}` por classe de status em todo
+    request; `errors_total{code}` por tipo de erro (rate_limited,
+    upstream_error, not_found, internal_error, etc.) incrementado no
+    único lugar que já sabe qual `code` é — o `setErrorHandler` central;
+    `ws_connections_total`/`ws_connections_active` (gauge) no
+    connect/close da sinalização.
+  - **Achado no caminho**: uma rota genuinely inexistente (404 de
+    roteamento) respondia com o shape padrão do Fastify
+    (`{message,error,statusCode}`), não o envelope único do contrato
+    (#27), e nunca contava nas métricas — a suíte de testes só checava
+    `statusCode`, nunca o corpo, então passava sem perceber. Corrigido
+    com `app.setNotFoundHandler`.
+  - Validado: `npm test` 153/153 (14 testes novos — `Metrics` isolado,
+    `ConnectRateLimiter` isolado incluindo janela deslizante, WS fechando
+    com 4429 no limite, `/metrics` público, `errors_total` distinguindo
+    `rate_limited` de `not_found`, `http_responses_total` por classe,
+    limite HTTP customizado valendo de verdade, corpo grande → 413).
+    **Smoke test real contra o processo** (não só unitário): `/metrics`
+    populado depois de tráfego real; 25 conexões WS reais em rajada
+    contra um servidor de verdade — exatamente 5 fecham com 4429 (limite
+    default 20); `RATE_LIMIT_REGISTER_MAX=2` via env muda o comportamento
+    de verdade (3ª tentativa de registro passa a 429); payload de ~2MB
+    responde 413 com o envelope certo, não 500.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
 Ordem de execução pela dependência declarada em cada issue (quem não depende
-de nada vem primeiro; grupos entre `---` podem andar em paralelo):
+de nada vem primeiro; grupos entre `---` podem andar em paralelo). **Esta
+lista é uma foto da ordem original (issue #27) e não é podada conforme as
+coisas fecham** — pra saber o que já está pronto de verdade, a seção 2
+(Feito) é quem manda; issues fechadas continuam aqui só pelo contexto de
+dependência.
 
 1. [#27](https://github.com/Ruthraas/Screen-Share/issues/27) — Documentar arquitetura e contrato HTTP do backend (OpenAPI) — **sem dependências, ponto de partida**
 2. [#28](https://github.com/Ruthraas/Screen-Share/issues/28) — Inicializar serviço backend com health checks — depende de #27
