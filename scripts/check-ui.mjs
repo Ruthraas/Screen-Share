@@ -96,6 +96,15 @@ await page.route("**/v1/groups/*", route => {
   if (!group) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: { code: "not_found", message: "grupo nao encontrado" } }) });
   return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...group, members: [{ userId: uid, role: "owner" }] }) });
 });
+// Presença real (nunca consumida pelo cliente antes desta rodada de
+// melhorias de UI) — fixture simples: o próprio usuário sempre aparece
+// online. Valida que a contagem some do "..." de carregamento pra um
+// número de verdade, não só que a chamada não quebra a tela.
+await page.route("**/v1/groups/*/presence", route => route.fulfill({
+  contentType: "application/json",
+  body: JSON.stringify({ members: [{ userId: uid, online: true, lastSeenAt: new Date().toISOString() }] }),
+}));
+await page.route("**/v1/groups/*/presence/heartbeat", route => route.fulfill({ status: 204, body: "" }));
 
 // issue #71: assim que um grupo é selecionado, `RtcProvider` abre sinalização
 // de verdade (`/ws`) e busca credenciais TURN. Sem backend real aqui, nunca
@@ -165,6 +174,7 @@ try {
   await wave(); await snapshot("home");
   await page.getByTitle("grupos", { exact: true }).click();
   await page.getByRole("heading", { name: "grupos", exact: true }).waitFor();
+  await page.getByText("1 online", { exact: true }).waitFor();
   await wave(); await snapshot("groups");
   // Clicar no card do grupo na lista deve entrar na sala de novo.
   await page.getByText("grupo de teste local", { exact: true }).click();
@@ -192,6 +202,13 @@ try {
   await page.mouse.move(0, 0); await page.keyboard.press("Control+k");
   await page.getByRole("dialog", { name: "comandos" }).waitFor();
   await wave(); await snapshot("palette");
+  // As badges de atalho (g/n/,) só disparam com a busca vazia — dispara
+  // "n" (criar grupo) antes de digitar qualquer coisa.
+  await page.keyboard.press("n");
+  await page.getByRole("heading", { name: "novo grupo" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.mouse.move(0, 0); await page.keyboard.press("Control+k");
+  await page.getByRole("dialog", { name: "comandos" }).waitFor();
   // issue #26/#17: a busca de verdade filtra a lista, e o item selecionado
   // acompanha o filtro — Enter no resultado filtrado navega certo.
   await page.keyboard.type("config");

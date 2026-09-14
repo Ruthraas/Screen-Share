@@ -43,6 +43,15 @@ export function CommandPalette({ onClose, onAction }: { onClose: () => void; onA
       else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); move(e.key === "ArrowDown" ? 1 : -1); }
       else if (e.key === "Enter") { e.preventDefault(); if (items[selected]) onAction(items[selected].id); }
       else if (e.key === "Tab") { e.preventDefault(); move(e.shiftKey ? -1 : 1); }
+      // Os atalhos mostrados em cada <kbd> (g/n/,) só disparam com a busca
+      // vazia — a badge nunca funcionava de verdade antes disso: o campo de
+      // busca fica focado o tempo todo, então sem essa guarda digitar "g"
+      // pra FILTRAR um grupo chamado "grupos de trabalho" abriria "entrar
+      // em grupo" no meio da digitação em vez de filtrar.
+      else if (query === "") {
+        const match = items.find(item => item.key !== "enter" && item.key.toLowerCase() === e.key.toLowerCase());
+        if (match) { e.preventDefault(); onAction(match.id); }
+      }
     }}>
       <div className="command-search">
         <IconSearch />
