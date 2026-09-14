@@ -1,5 +1,5 @@
 import { apiUrl, getAccessToken, getCurrentSession, refreshSession } from "./authClient";
-import type { ApiGroup, ApiGroupDetail, Invite } from "../data/types";
+import type { ApiGroup, ApiGroupDetail, Invite, PresenceEntry } from "../data/types";
 
 /**
  * Erro de uma chamada a /v1/groups|invites (issue #60). `message` já vem
@@ -111,4 +111,21 @@ export async function revokeInvite(groupId: string, inviteId: string): Promise<v
 
 export async function acceptInvite(token: string): Promise<ApiGroup> {
   return request(`/v1/invites/${encodeURIComponent(token)}/accept`, { method: "POST" });
+}
+
+/** Presença real (backend, issue #36) — nunca tinha sido consumida pelo
+ * cliente antes: `online`/`activeStreams` de `Group` sempre foram
+ * hardcoded (`members: []`/`activeStreams: 0` em `AccountProvider.toGroup`,
+ * `online: false` em todo membro que não o próprio usuário), mostrando
+ * "0 online" mesmo com gente de verdade conectada. TTL da sessão de
+ * presença no backend é 30s (`backend/src/presence/store.ts`) — heartbeat
+ * chamado bem mais frequente que isso (ver `PRESENCE_POLL_INTERVAL_MS` em
+ * `AccountProvider.tsx`) pra nunca deixar a própria sessão expirar. */
+export async function sendPresenceHeartbeat(groupId: string): Promise<void> {
+  await request(`${groupPath(groupId)}/presence/heartbeat`, { method: "POST" });
+}
+
+export async function getPresence(groupId: string): Promise<PresenceEntry[]> {
+  const data = await request(`${groupPath(groupId)}/presence`);
+  return data.members ?? [];
 }

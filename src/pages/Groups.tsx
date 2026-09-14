@@ -1,10 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "../components/layout/AccountProvider";
+import { getPresence } from "../services/groupsApi";
 import { EmptyPanel } from "../components/ui/AsyncState";
 import { Button } from "../components/ui/Button";
 import type { Group } from "../data/types";
 
+/** Contagem real de online por card (issue backend #36, presença nunca
+ * consumida pelo cliente antes) — busca a própria, sem heartbeat (só quem
+ * já está na sala manda heartbeat, `AccountProvider.tsx`; um card na lista
+ * não significa "estou nesse grupo agora"). Nunca mostra "0 online" como
+ * se fosse dado real enquanto ainda não sabe — fica em branco até
+ * carregar, igual as miniaturas de captura fazem. */
+function useOnlineCount(groupId: string): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setCount(null);
+    getPresence(groupId).then(
+      entries => { if (!cancelled) setCount(entries.filter(entry => entry.online).length); },
+      () => { if (!cancelled) setCount(null); },
+    );
+    return () => { cancelled = true; };
+  }, [groupId]);
+  return count;
+}
+
 function GroupItem({ group, onClick, isSelected, onLeave, onDelete, busy }: { group: Group; onClick: () => void; isSelected: boolean; onLeave: () => void; onDelete: () => void; busy: boolean }) {
+  const onlineCount = useOnlineCount(group.id);
   return (
     <div className={`group-item ${isSelected ? "is-selected" : ""}`}>
       <button className="group-item__body" type="button" onClick={onClick}>
@@ -13,8 +35,7 @@ function GroupItem({ group, onClick, isSelected, onLeave, onDelete, busy }: { gr
           <strong>{group.name}</strong>
         </div>
         <div className="group-item__meta">
-          <span>{group.members.filter(m => m.online).length} online</span>
-          <span>{group.activeStreams} transmissões</span>
+          <span>{onlineCount === null ? "..." : onlineCount} online</span>
         </div>
       </button>
       <div className="group-item__actions">

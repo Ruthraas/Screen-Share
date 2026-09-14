@@ -1,12 +1,17 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCurrentSession, getSessionError, logout as logoutSession, restoreSession, subscribeSession, type SessionUser } from "../../services/authClient";
 import { emptyAccountData, persistDeviceTheme, readAccount, writeAccount, type AccountData } from "../../services/localData";
-import { ApiError, acceptInvite as apiAcceptInvite, createGroup as apiCreateGroup, createInvite as apiCreateInvite, deleteGroup as apiDeleteGroup, getGroup as apiGetGroup, leaveGroup as apiLeaveGroup, listGroups as apiListGroups } from "../../services/groupsApi";
+import { ApiError, acceptInvite as apiAcceptInvite, createGroup as apiCreateGroup, createInvite as apiCreateInvite, deleteGroup as apiDeleteGroup, getGroup as apiGetGroup, getPresence, leaveGroup as apiLeaveGroup, listGroups as apiListGroups, sendPresenceHeartbeat } from "../../services/groupsApi";
 import type { ApiGroup, Group, Preferences, User } from "../../data/types";
 import type { SessionState } from "../../services/sessionRouting";
 
 export type GroupsState = { status: "loading" } | { status: "error"; error: ApiError } | { status: "success" };
 export type SelectedGroupState = { status: "idle" } | { status: "loading" } | { status: "error"; error: ApiError } | { status: "success" };
+
+/** Bem abaixo do TTL de presença do backend (30s, `backend/src/presence/store.ts`)
+ * — precisa sobrar folga real pra uma chamada lenta/perdida não deixar a
+ * própria sessão expirar entre um heartbeat e o outro. */
+const PRESENCE_POLL_INTERVAL_MS = 10_000;
 
 type Account = {
   user: User;
@@ -60,7 +65,7 @@ function memberLabel(userId: string): string {
 }
 
 function toGroup(api: ApiGroup): Group {
-  return { id: api.id, name: api.name, members: [], activeStreams: 0, role: api.role };
+  return { id: api.id, name: api.name, members: [], role: api.role };
 }
 
 export function AccountProvider({ account, children }: { account: SessionUser; children: ReactNode }) {
@@ -131,6 +136,40 @@ export function AccountProvider({ account, children }: { account: SessionUser; c
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.selectedId, groups]);
+
+  // Presença real (issue backend #36, nunca consumida pelo cliente antes) —
+  // heartbeat + consulta periódica pra saber quem do grupo selecionado
+  // está online de verdade agora, em vez do `online: false` fixo que todo
+  // membro (menos o próprio usuário) sempre teve. Só heartbeata o grupo
+  // SELECIONADO (é o único que faz sentido dizer "estou aqui agora"); a
+  // lista de grupos usa uma leitura sem heartbeat (`Groups.tsx`).
+  useEffect(() => {
+    const selectedId = data.selectedId;
+    if (!selectedId) return;
+    let cancelled = false;
+    async function tick() {
+      try {
+        await sendPresenceHeartbeat(selectedId as string);
+        const entries = await getPresence(selectedId as string);
+        if (cancelled) return;
+        const onlineIds = new Set(entries.filter(entry => entry.online).map(entry => entry.userId));
+        setSelectedDetail(current =>
+          current && current.id === selectedId
+            ? { ...current, members: current.members.map(member => ({ ...member, online: member.id === account.id ? true : onlineIds.has(member.id) })) }
+            : current,
+        );
+      } catch {
+        // Presença é um extra — nunca deve derrubar a tela por falhar.
+      }
+    }
+    void tick();
+    const interval = setInterval(() => void tick(), PRESENCE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.selectedId]);
 
   const selectedGroup = groups.find(group => group.id === data.selectedId);
   const selected: Group | undefined = selectedGroup && selectedDetail?.id === selectedGroup.id
