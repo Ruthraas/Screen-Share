@@ -70,9 +70,9 @@ sequenceDiagram
 | Protocolo de sinalização (schema) | #38 | Backend | Fechada |
 | Relay de sinalização (`/ws`) | #9 | Backend | **Fechada** (2026-09-13) — critérios de relay validados com teste real, reforçada pela #42 (reconexão/heartbeat) |
 | Infra TURN | #40 | Backend | **Decisão revisada (2026-09-14): Cloudflare Realtime TURN** (serviço gerenciado) em vez de coturn autogerenciado — ver `docs/backend/ARQUITETURA.md` |
-| Credenciais TURN temporárias | #41 | Backend | Implementado e testado (`POST /v1/turn-credentials`) — pendente só validar a TURN Key real na conta Cloudflare (ver nota abaixo) |
+| Credenciais TURN temporárias | #41 | Backend | **Fechada** (2026-09-14) — validado com credenciais reais da Cloudflare, `iceServers` de verdade emitidos ponta a ponta |
 | Teste de capacidade | #47 | Backend | Aberta, depende de #41 estar validado com credencial real + #42/#43 |
-| `RTCPeerConnection` do cliente + indicador de ping | #71 | Frontend | Aberta, depende de #8 (pronta) + #9 (pronta) + #41 (implementado, pendente validação da chave) |
+| `RTCPeerConnection` do cliente + indicador de ping | #71 | Frontend | Aberta, depende de #8 (pronta) + #9 (pronta) + #41 (pronta) — nenhuma dependência de backend restante |
 
 ## O contrato exato que a #71 precisa do #41 (atualizado 2026-09-14)
 
@@ -108,17 +108,17 @@ Ponto de atenção pra quando a #71 for implementada: renovar a credencial
 antes do `ttlSeconds` (hoje 3600s) expirar se a chamada demorar, buscando
 um novo `/v1/turn-credentials` em vez de reusar uma credencial vencida.
 
-## Nota (2026-09-14): TURN Key precisa ser revalidada na Cloudflare
+## Nota (2026-09-14, resolvida no mesmo dia): TURN Key precisava ser revalidada na Cloudflare
 
-O backend (`/v1/turn-credentials`) está implementado, testado (`npm test`)
-e validado contra a API real da Cloudflare — a chamada chega certinho no
+O backend (`/v1/turn-credentials`) foi implementado, testado (`npm test`) e
+validado contra a API real da Cloudflare — a chamada chegava certinho no
 endpoint certo, com o formato certo (confirmado pelo próprio header
 `Link: <stun:stun.cloudflare.com:3478>; rel="ice-server"` que a Cloudflare
-devolve mesmo em erro). Só que a `TURN_KEY_ID` configurada hoje não
-corresponde a uma TURN Key válida na conta — a Cloudflare responde
-`{"error":"cannot find specified key"}`. Provavelmente o App ID foi copiado
-de uma tela diferente (ex.: Cloudflare Calls/SFU, que também usa "App ID" +
-"API Token" mas é um produto diferente do Realtime TURN). Ação: confirmar
-no dashboard da Cloudflare em **Realtime → TURN** (não Calls/SFU), criar ou
-conferir a TURN Key ali, e atualizar `backend/.env` (`TURN_KEY_ID`/
-`TURN_KEY_API_TOKEN`) com os valores dessa tela específica.
+devolve mesmo em erro). A `TURN_KEY_ID` configurada inicialmente não
+correspondia a uma TURN Key válida (`{"error":"cannot find specified
+key"}`) porque tinha sido copiada de **Cloudflare Calls/SFU** — produto
+diferente que usa os mesmos nomes de campo ("App ID"/"API Token") do
+Realtime TURN. **Resolvido**: chave certa gerada em Realtime → TURN,
+`backend/.env` atualizado, `POST /v1/turn-credentials` confirmado emitindo
+`iceServers` de verdade (STUN + TURN com credencial de curta duração) de
+ponta a ponta contra o backend real.

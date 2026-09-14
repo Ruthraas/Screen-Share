@@ -18,7 +18,7 @@ mas ainda não manda essa tela pra outro participante.**
 | Captura de tela local (Windows Graphics Capture nativo, com áudio de sistema opcional) | **Real desde 2026-09-13** (issue #8/#18/#72) — `src-tauri/src/capture.rs` + `useLocalCapture.ts`; **é 100% nativo Rust, não `getDisplayMedia`** (decisão explícita: só o app empacotado, nunca navegador). `Share.tsx` já deixa escolher fonte (grid com miniatura real), qualidade e áudio, e mostra a tela capturada no `ScreenViewer` — só que **só pra você mesmo**, o próprio app avisa: *"so voce ve sua tela por enquanto — enviar pra outros participantes ainda nao esta disponivel"* |
 | Presença (`/v1/groups/:id/presence`) | Implementado e testado **no backend**; **frontend ainda não chama** |
 | Sinalização WebSocket (`/ws`, offer/answer/ICE/peer-reconnected) | Implementado e testado **no backend** (inclusive reconexão — issue #42); **frontend ainda não tem cliente WebSocket** — issue [#71](https://github.com/Ruthraas/Screen-Share/issues/71), em aberto (só existe um doc de plano, `docs/WEBRTC_TURN_PLAN.md`, implementação não começou) |
-| Credenciais TURN (`POST /v1/turn-credentials`) | **Implementado e testado no backend** (issue #40/#41, Cloudflare Realtime) — validado contra a API real da Cloudflare, mas a `TURN_KEY_ID` no `.env` ainda não corresponde a uma chave válida na conta (`cannot find specified key`); ver `docs/WEBRTC_TURN_PLAN.md` |
+| Credenciais TURN (`POST /v1/turn-credentials`) | **Real desde 2026-09-14** (issue #40/#41, Cloudflare Realtime) — validado ponta a ponta contra a API real da Cloudflare, `iceServers` de verdade emitidos |
 | Conexão P2P (`RTCPeerConnection`) | **Não existe no código ainda** — depende da #71 acima |
 | Tela "Multi-Screen" do app | Grupo/membros já são reais; o texto ainda avisa que a conexão entre participantes não está habilitada — isso é preciso, não é mock esquecido |
 
@@ -115,11 +115,11 @@ seção 1):
    e entregar o stream remoto pro `ScreenViewer` (contrato já pronto, só
    consumir).
 3. Usar as credenciais TURN reais de `POST /v1/turn-credentials` (#41,
-   pronto) como `iceServers` do `RTCPeerConnection` — já resolve conexão
-   fora da LAN também, não só mesma rede/STUN, assim que a `TURN_KEY_ID`
-   for corrigida na conta Cloudflare (ver seção 0 e
-   `docs/WEBRTC_TURN_PLAN.md` pra detalhe). `#47` (teste de capacidade)
-   ainda fica pra depois disso funcionar de ponta a ponta.
+   pronto e já validado com a Cloudflare de verdade) como `iceServers` do
+   `RTCPeerConnection` — resolve conexão fora da LAN também, não só mesma
+   rede/STUN. Nada pendente do lado backend pra isso (ver
+   `docs/WEBRTC_TURN_PLAN.md` pro contrato completo). `#47` (teste de
+   capacidade) fica pra depois disso funcionar de ponta a ponta.
 
 Plano completo de integração (diagrama de sequência) em
 `docs/WEBRTC_TURN_PLAN.md`.

@@ -500,19 +500,21 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     exatos e mapeamento de erro sem vazar o token; rota com provider
     fake confirmando sucesso/401 sem chamar o provider/502/429).
     **Smoke test real contra a API de verdade da Cloudflare** (não só
-    fake): a chamada chega certinho no endpoint certo, formato certo
-    (confirmado pelo próprio header `Link: <stun:...>; rel="ice-server"`
-    que a Cloudflare devolve) — só que a `TURN_KEY_ID` configurada não
-    corresponde a uma chave válida (`{"error":"cannot find specified
-    key"}`), provavelmente copiada de uma tela diferente da Cloudflare
-    (Calls/SFU usa os mesmos nomes "App ID"/"API Token" só que é outro
-    produto). Reportado ao usuário — pendente revalidar em Realtime →
-    TURN no dashboard. Detalhe completo em `docs/WEBRTC_TURN_PLAN.md`.
-  - **Achado recorrente, de novo**: credenciais coladas no `.env` sem
-    `KEY=VALUE` (`App ID` / valor / `API Token` / valor, em linhas soltas,
-    copiado direto do dashboard) — mesmo padrão de erro já visto com
-    Google/Discord nesta etapa do projeto; corrigido pra `TURN_KEY_ID=`/
-    `TURN_KEY_API_TOKEN=`.
+    fake): a primeira `TURN_KEY_ID` configurada respondia
+    `{"error":"cannot find specified key"}` — tinha sido copiada de
+    **Cloudflare Calls/SFU**, produto diferente que usa os mesmos nomes
+    de campo ("App ID"/"API Token") do Realtime TURN. Reportado ao
+    usuário, que gerou a chave certa em Realtime → TURN no mesmo dia —
+    `POST /v1/turn-credentials` confirmado emitindo `iceServers` de
+    verdade (STUN + TURN com credencial de curta duração) ponta a ponta
+    contra o backend real, `npm run test:e2e-manual` 19/19. Detalhe
+    completo em `docs/WEBRTC_TURN_PLAN.md`.
+  - **Achado recorrente, de novo (duas vezes nesta etapa)**: credenciais
+    coladas no `.env` sem `KEY=VALUE` (`App ID` / valor / `API Token` /
+    valor, em linhas soltas, copiado direto do dashboard) — mesmo padrão
+    de erro já visto com Google/Discord antes neste projeto; corrigido
+    pra `TURN_KEY_ID=`/`TURN_KEY_API_TOKEN=` as duas vezes (chave errada
+    da Calls/SFU, depois a chave certa da Realtime TURN).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -581,7 +583,7 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 - **Grupos e convites — implementados** (`src/routes/groups.ts`, testados): `POST /v1/groups`, `GET /v1/groups`, `GET|PATCH|DELETE /v1/groups/{id}`, `POST /v1/groups/{id}/leave` (dono recebe `409` se tentar saír sem transferir/excluir antes), `POST|GET /v1/groups/{id}/invites`, `DELETE /v1/groups/{id}/invites/{inviteId}`, `POST /v1/invites/{token}/accept` (idempotente pra quem já é membro; `409` se expirado/revogado/esgotado). `PATCH`/criar-revogar-convite exigem papel `owner` ou `admin`; excluir grupo exige `owner`.
 - **Presença — implementada** (`src/routes/presence.ts`, testada): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`.
 - **WebSocket** (`/ws?token=...&groupId=...`): cliente troca `offer`/`answer`/`ice-candidate`/`stream-started`/`stream-stopped` por um protocolo versionado com `correlationId` (#38, implementado e testado) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend). **Reconexão (#42, 2026-09-13)**: se a mesma conta abrir uma nova conexão pro mesmo grupo sem a antiga ter caído ainda (queda de rede curta), os outros participantes recebem `peer-reconnected` no lugar de um `peer-joined` repetido — é o sinal pra tentar ICE restart com esse peer em vez de tratar como entrada do zero; a conexão antiga sendo substituída nunca gera um `peer-left` falso (ela é fechada pelo servidor com código `4409`). Conexão sem `close` limpo (queda sem aviso — cabo, notebook suspenso) é detectada por heartbeat ping/pong a cada 15s e limpa em até ~30s, disparando `peer-left` de verdade nesse prazo em vez de depender do timeout do TCP (que pode levar minutos).
-- **TURN — implementado** (2026-09-14, via Cloudflare Realtime — ver `docs/backend/ARQUITETURA.md`): `POST /v1/turn-credentials` (autenticado) devolve `{ iceServers, ttlSeconds }` já no formato exato de `RTCConfiguration.iceServers` (`docs/WEBRTC_TURN_PLAN.md` tem o contrato completo pra #71). Pendente só uma TURN Key válida na conta Cloudflare do lado do usuário (não é trabalho de código) — cliente nunca deve usar segredo estático, sempre pedir credencial nova antes de abrir conexão.
+- **TURN — implementado e validado com credenciais reais** (2026-09-14, via Cloudflare Realtime — ver `docs/backend/ARQUITETURA.md`): `POST /v1/turn-credentials` (autenticado) devolve `{ iceServers, ttlSeconds }` já no formato exato de `RTCConfiguration.iceServers` (`docs/WEBRTC_TURN_PLAN.md` tem o contrato completo pra #71) — nenhuma dependência de backend restante pra #71 fechar. Cliente nunca deve usar segredo estático, sempre pedir credencial nova antes de abrir conexão.
 - **Updater**: `#48` (frontend, exibir/instalar atualização) consome o manifesto gerado por `#49` (backend/infra) — URLs HTTPS da própria release, arquitetura x64.
 - **Dependência inversa**: `#49` (backend) só fecha depois que o frontend entregar `#5` (build/smoke test Windows) e `#22` (ícones/identidade do bundle).
 - **Dependência inversa**: `#10` (integração) só fecha depois que o frontend entregar `#20` (troca entre transmissões no cliente).
