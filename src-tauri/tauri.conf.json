@@ -41,6 +41,12 @@
       "desktop": {
         "schemes": ["screenshare"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMTU5OEY2MzFERTczMUEKUldRYWM5NHg5cGdWTU1taEtPRUJ5YVFxNVlDcEs5Y3prZDIvenJhTlU3QVFhVzRXZDVPN0pUTVgK",
+      "endpoints": [
+        "https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json"
+      ]
     }
   }
 }
