@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Permissões padrão da janela principal — comandos próprios (auth, secure_store, capture, audio) já são liberados por definição do Tauri e não precisam de nada aqui; só APIs 'core' do lado do frontend (event.listen/unlisten, usado pelos eventos de captura em src/services/captureClient.ts) exigem essa declaração explícita.","local":true,"windows":["main"],"permissions":["core:default","core:event:default"]}}

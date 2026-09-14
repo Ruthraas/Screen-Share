@@ -5,7 +5,16 @@ import { useAccount } from "./AccountProvider";
 import { Avatar } from "../ui/Avatar";
 import { BrandMark, IconHome, IconSettings, IconUsers, IconLogout, IconUser } from "../ui/Icons";
 import { PixelWave } from "./PixelWave";
+import { getSharingActive, subscribeSharingActive } from "../../services/sharingState";
 import type { Route } from "../../data/types";
+
+/** A ondinha decorativa distrai enquanto a tela está sendo compartilhada de
+ * verdade (issue #8, pedido do usuário) — some durante a captura ativa. */
+function useSharingActive(): boolean {
+  const [sharing, setSharing] = useState(getSharingActive);
+  useEffect(() => subscribeSharingActive(setSharing), []);
+  return sharing;
+}
 
 export function AppShell({
   route,
@@ -23,6 +32,7 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const { user: currentUser, logout, selected } = useAccount();
+  const sharing = useSharingActive();
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
@@ -111,7 +121,7 @@ export function AppShell({
         ) : <header className="topbar"><span className="muted">{route === "profile" ? "perfil" : route === "settings" ? "configuracoes" : "sem grupo selecionado"}</span></header>}
         {children}
       </main>
-      <PixelWave />
+      {sharing ? null : <PixelWave />}
       {profileMenu && createPortal(profileMenu, document.body)}
     </div>
   );

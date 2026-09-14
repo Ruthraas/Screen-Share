@@ -3097,6 +3097,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "url",
  "wasapi",
+ "windows 0.62.2",
  "windows-capture",
 ]
 
