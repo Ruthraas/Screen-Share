@@ -3,6 +3,10 @@ export type OAuthProviderName = "google" | "github" | "discord";
 export interface OAuthProfile {
   providerAccountId: string;
   email?: string;
+  /** Nome de exibição do provedor (issue #70) — opcional, nunca bloqueia login se faltar. */
+  displayName?: string;
+  /** URL pública do avatar do provedor (issue #70) — idem. */
+  avatarUrl?: string;
 }
 
 export class OAuthProviderError extends Error {}
@@ -64,7 +68,12 @@ export const googleProvider: OAuthProvider = {
     });
     const data = await parseJsonOrThrow(response, "Perfil Google");
     if (!data.sub) throw new OAuthProviderError("Google não retornou identificador de usuário (sub).");
-    return { providerAccountId: String(data.sub), email: data.email ?? undefined };
+    return {
+      providerAccountId: String(data.sub),
+      email: data.email ?? undefined,
+      displayName: data.name ?? undefined,
+      avatarUrl: data.picture ?? undefined,
+    };
   },
 };
 
@@ -107,7 +116,14 @@ export const githubProvider: OAuthProvider = {
       }
     }
 
-    return { providerAccountId: String(user.id), email };
+    return {
+      providerAccountId: String(user.id),
+      email,
+      // `name` pode vir vazio (campo opcional de perfil) — `login` (o
+      // @usuário) sempre existe, é o fallback certo do próprio GitHub.
+      displayName: user.name || user.login || undefined,
+      avatarUrl: user.avatar_url ?? undefined,
+    };
   },
 };
 
@@ -144,7 +160,18 @@ export const discordProvider: OAuthProvider = {
     });
     const data = await parseJsonOrThrow(response, "Perfil Discord");
     if (!data.id) throw new OAuthProviderError("Discord não retornou identificador de usuário.");
-    return { providerAccountId: String(data.id), email: data.email ?? undefined };
+    return {
+      providerAccountId: String(data.id),
+      email: data.email ?? undefined,
+      // `global_name` (nome de exibição novo do Discord) tem prioridade;
+      // `username` sempre existe como fallback.
+      displayName: data.global_name || data.username || undefined,
+      // `avatar` é só o hash do arquivo — precisa montar a URL do CDN.
+      // Sem hash (conta sem avatar customizado), fica sem avatarUrl em vez
+      // de calcular o avatar-padrão por discriminador (não vale a
+      // complexidade extra só pra isso).
+      avatarUrl: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : undefined,
+    };
   },
 };
 
