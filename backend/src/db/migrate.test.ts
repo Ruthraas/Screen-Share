@@ -22,6 +22,7 @@ test("migrateUp em banco vazio cria groups, group_members, invites e users", () 
     "0001_groups_and_members.sql",
     "0002_invites.sql",
     "0003_users_and_sessions.sql",
+    "0004_user_display_profile.sql",
   ]);
   const tables = tableNames(db);
   assert.ok(tables.includes("groups"));
@@ -30,6 +31,9 @@ test("migrateUp em banco vazio cria groups, group_members, invites e users", () 
   assert.ok(tables.includes("users"));
   assert.ok(tables.includes("oauth_accounts"));
   assert.ok(tables.includes("refresh_tokens"));
+  const columns = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name);
+  assert.ok(columns.includes("display_name"));
+  assert.ok(columns.includes("avatar_url"));
   db.close();
 });
 
@@ -53,19 +57,27 @@ test("migrateDownOne desfaz só a última migração aplicada, em ordem reversa"
   migrateUp(db, migrations);
 
   const undoneFirst = migrateDownOne(db, migrations);
-  assert.equal(undoneFirst, "0003_users_and_sessions.sql");
+  assert.equal(undoneFirst, "0004_user_display_profile.sql");
+  let columns = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name);
+  assert.ok(!columns.includes("display_name"));
+  assert.ok(!columns.includes("avatar_url"));
   let tables = tableNames(db);
+  assert.ok(tables.includes("users"), "0003 não deve ser desfeita ainda");
+
+  const undoneSecond = migrateDownOne(db, migrations);
+  assert.equal(undoneSecond, "0003_users_and_sessions.sql");
+  tables = tableNames(db);
   assert.ok(!tables.includes("users"));
   assert.ok(tables.includes("invites"), "0002 não deve ser desfeita ainda");
 
-  const undoneSecond = migrateDownOne(db, migrations);
-  assert.equal(undoneSecond, "0002_invites.sql");
+  const undoneThird = migrateDownOne(db, migrations);
+  assert.equal(undoneThird, "0002_invites.sql");
   tables = tableNames(db);
   assert.ok(!tables.includes("invites"));
   assert.ok(tables.includes("groups"), "0001 não deve ser desfeita ainda");
 
-  const undoneThird = migrateDownOne(db, migrations);
-  assert.equal(undoneThird, "0001_groups_and_members.sql");
+  const undoneFourth = migrateDownOne(db, migrations);
+  assert.equal(undoneFourth, "0001_groups_and_members.sql");
   tables = tableNames(db);
   assert.ok(!tables.includes("groups"));
   assert.ok(!tables.includes("group_members"));

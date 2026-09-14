@@ -565,7 +565,12 @@ components:
         Access token de sessão emitido pelo próprio backend (issue #30, via
         /auth/register, /auth/login ou /auth/oauth/{provider}/callback) —
         não é mais um token do Firebase. Vida curta (15 min); renovar com
-        /auth/refresh usando o refreshToken da mesma resposta.
+        /auth/refresh usando o refreshToken da mesma resposta. Payload
+        (base64url, sem verificação de assinatura no cliente) traz
+        `{uid, email?, displayName?, avatarUrl?, exp}` — os dois últimos
+        (issue #70) só existem se a conta já fez login via OAuth alguma
+        vez; login/refresh por e-mail+senha sem OAuth vinculado não tem
+        nome/avatar do backend, o cliente decide o fallback (ex.: e-mail).
 
   parameters:
     GroupId:
