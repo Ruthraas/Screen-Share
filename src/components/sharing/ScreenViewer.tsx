@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { User } from "../../data/types";
 import { Avatar } from "../ui/Avatar";
-import { IconMinimize } from "../ui/Icons";
+import { IconEye, IconPlayerStop } from "../ui/Icons";
 import { log } from "../../services/logger";
 import { watchStreamEnded } from "./streamLifecycle";
 
@@ -9,14 +9,22 @@ export function ScreenViewer({
   user,
   members = [],
   stream,
-  onMinimize,
+  loading = false,
+  onStop,
   onSelect,
   onStreamEnded,
 }: {
   user: User;
   members?: User[];
   stream?: MediaStream;
-  onMinimize: () => void;
+  /** Existe um intervalo real entre a captura iniciar e o primeiro frame de
+   * verdade chegar — sem indicar isso, a tela em branco parece travada em
+   * vez de carregando (issue #8, pedido do usuário). */
+  loading?: boolean;
+  /** Para a captura de verdade (não é um "minimizar": ainda não existe
+   * modo PiP/segundo plano, então o botão precisa deixar claro que
+   * encerra a transmissão, não só esconde a janela). */
+  onStop: () => void;
   onSelect?: (user: User) => void;
   /** Dispara quando o stream termina sozinho (issue #19: "estado
    * encerrado") — ex. usuário para o compartilhamento pelo diálogo nativo
@@ -26,6 +34,15 @@ export function ScreenViewer({
   onStreamEnded?: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  // Botão "ver tela" (pedido do usuário) — só na visualização principal da
+  // transmissão, nunca nos cards de prévia do seletor. O vídeo continua
+  // recebendo frames em segundo plano (não pausa nada); é só um gesto
+  // explícito antes de mostrar, em vez de aparecer sozinho assim que o
+  // primeiro frame chega. Reseta sempre que uma transmissão nova começa.
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (!stream) setRevealed(false);
+  }, [stream]);
 
   useEffect(() => {
     const element = video.current;
@@ -52,7 +69,7 @@ export function ScreenViewer({
   }, [stream, onStreamEnded]);
 
   return (
-    <section className="screen-viewer" aria-label={"tela de " + user.name}>
+    <section className={`screen-viewer ${members.length === 0 ? "screen-viewer--solo" : ""}`} aria-label={"tela de " + user.name}>
       <div className="stream-stage">
         {stream ? (
           <video
@@ -60,22 +77,39 @@ export function ScreenViewer({
             autoPlay
             playsInline
             muted
+            className={revealed ? "" : "is-hidden-until-revealed"}
             onError={() => log.warn("capture", "elemento de video reportou erro de reproducao")}
           />
         ) : (
           <div className="stream-placeholder" />
         )}
+        {stream && loading ? (
+          <div className="stream-loading">
+            <span className="cursor cursor--blink" aria-hidden="true" />
+            <span>carregando tela</span>
+          </div>
+        ) : null}
+        {stream && !loading && !revealed ? (
+          <div className="stream-reveal">
+            <button className="stream-reveal__button" onClick={() => setRevealed(true)}>
+              <IconEye />
+              <span>ver tela</span>
+            </button>
+          </div>
+        ) : null}
         <span className="viewer-label">{user.name}</span>
-        <button className="viewer-minimize nav-button" title="minimizar" onClick={onMinimize}><IconMinimize /></button>
+        <button className="viewer-minimize nav-button" title="parar transmissao" onClick={onStop}><IconPlayerStop /></button>
       </div>
-      <aside className="viewer-members">
-        {members.map(member => (
-          <button key={member.id} title={member.name} className={"viewer-member " + (member.current ? "is-current" : "")} onClick={() => onSelect?.(member)}>
-            <Avatar user={member} size="sm" />
-            <span>{member.name}</span>
-          </button>
-        ))}
-      </aside>
+      {members.length > 0 ? (
+        <aside className="viewer-members">
+          {members.map(member => (
+            <button key={member.id} title={member.name} className={"viewer-member " + (member.current ? "is-current" : "")} onClick={() => onSelect?.(member)}>
+              <Avatar user={member} size="sm" />
+              <span>{member.name}</span>
+            </button>
+          ))}
+        </aside>
+      ) : null}
     </section>
   );
 }

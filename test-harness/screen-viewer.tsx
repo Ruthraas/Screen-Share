@@ -24,7 +24,7 @@ function Harness() {
   return (
     <div>
       <div data-testid="ended-count">{endedCount}</div>
-      <ScreenViewer user={user} stream={stream} onMinimize={() => {}} onStreamEnded={() => setEndedCount(c => c + 1)} />
+      <ScreenViewer user={user} stream={stream} onStop={() => {}} onStreamEnded={() => setEndedCount(c => c + 1)} />
     </div>
   );
 }

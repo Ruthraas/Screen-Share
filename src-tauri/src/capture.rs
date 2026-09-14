@@ -15,6 +15,44 @@ use windows_capture::settings::{
     GraphicsCaptureItemType, MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 use windows_capture::window::Window;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+
+/// `Window::is_valid()` da `windows-capture` (visibilidade, retangulo de
+/// cliente, `WS_EX_TOOLWINDOW`, `WS_CHILD`) NÃO checa se a janela está
+/// "cloaked" pelo DWM (comum em apps UWP/janelas de outro desktop virtual —
+/// aparecem como visiveis pro Win32 mas não tem nada pra capturar de
+/// verdade) — achado real testando: as 3 janelas listadas nesta máquina
+/// falhavam 100% das vezes ao converter pra item de captura
+/// (`E_INVALIDARG`), e todas eram cloaked. Filtra aqui, antes de expor a
+/// fonte pro cliente, em vez de deixar ele escolher algo que nunca vai
+/// funcionar.
+fn is_cloaked(hwnd: *mut std::ffi::c_void) -> bool {
+    let mut cloaked: u32 = 0;
+    let result = unsafe {
+        DwmGetWindowAttribute(
+            HWND(hwnd),
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut u32 as *mut std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    result.is_ok() && cloaked != 0
+}
+
+/// O WebView2 do Tauri já inicializa o COM em modo STA nas threads que
+/// entregam comandos (`#[tauri::command]`) — a `windows-capture` tenta
+/// inicializar o WinRT em modo MTA nessa mesma thread e falha
+/// (`FailedToInitWinRT`, apartment já num modo incompatível; achado real
+/// testando a captura de verdade, não suposição). Toda chamada que toca
+/// WinRT (resolver um `Monitor`/`Window` num item de captura, abrir a
+/// sessão) precisa rodar numa thread nova, sem nenhum COM inicializado
+/// ainda, onde a própria inicialização da `windows-capture` funciona limpa.
+fn run_on_fresh_thread<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+    std::thread::spawn(f)
+        .join()
+        .map_err(|_| "capture-thread-panic".to_string())
+}
 
 /// Resolve o id opaco (`monitor:<indice>` ou `window:<hwnd>`) de volta pra um
 /// item de captura de verdade — compartilhado entre `start_capture` (stream
@@ -22,16 +60,26 @@ use windows_capture::window::Window;
 fn resolve_item(source_id: &str) -> Result<GraphicsCaptureItemType, String> {
     if let Some(index_str) = source_id.strip_prefix("monitor:") {
         let index: usize = index_str.parse().map_err(|_| "capture-source-not-found".to_string())?;
-        let monitor = Monitor::from_index(index).map_err(|_| "capture-source-not-found".to_string())?;
-        return monitor.try_into().map_err(|_| "capture-source-not-found".to_string());
+        let monitor = Monitor::from_index(index).map_err(|error| {
+            eprintln!("[capture] Monitor::from_index({index}) falhou: {error:?}");
+            "capture-source-not-found".to_string()
+        })?;
+        return monitor.try_into().map_err(|error| {
+            eprintln!("[capture] Monitor -> GraphicsCaptureItemType falhou pro indice {index}: {error:?}");
+            "capture-source-not-found".to_string()
+        });
     }
     if let Some(hwnd_str) = source_id.strip_prefix("window:") {
         let hwnd: isize = hwnd_str.parse().map_err(|_| "capture-source-not-found".to_string())?;
         let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
         if !window.is_valid() {
+            eprintln!("[capture] Window::is_valid() = false pro hwnd {hwnd}");
             return Err("capture-source-not-found".into());
         }
-        return window.try_into().map_err(|_| "capture-source-not-found".to_string());
+        return window.try_into().map_err(|error| {
+            eprintln!("[capture] Window -> GraphicsCaptureItemType falhou pro hwnd {hwnd}: {error:?}");
+            "capture-source-not-found".to_string()
+        });
     }
     Err("capture-source-not-found".into())
 }
@@ -62,6 +110,9 @@ pub fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
 
     for window in Window::enumerate().map_err(|_| "capture-enumerate-failed")? {
         if !window.is_valid() {
+            continue;
+        }
+        if is_cloaked(window.as_raw_hwnd()) {
             continue;
         }
         let Ok(title) = window.title() else { continue };
@@ -102,6 +153,19 @@ impl Quality {
     }
 }
 
+/// Fps pedido pelo cliente pro fluxo de captura — controla o intervalo
+/// minimo entre frames que o WGC entrega (`MinimumUpdateIntervalSettings`),
+/// nao so a cadencia do `<video>` no frontend (issue #8, pedido do usuario:
+/// "tem como definir fps"). Faixa clampada (5-60) pra nunca virar um valor
+/// absurdo vindo do cliente (0 causaria divisao por zero no `Duration`).
+fn clamp_fps(fps: u32) -> u32 {
+    fps.clamp(5, 60)
+}
+
+fn update_interval_for_fps(fps: u32) -> MinimumUpdateIntervalSettings {
+    MinimumUpdateIntervalSettings::Custom(Duration::from_secs_f64(1.0 / clamp_fps(fps) as f64))
+}
+
 /// `as_raw_buffer` do `windows-capture` pode incluir padding por linha
 /// (`row_pitch` maior que `width * 4`, comum quando a largura nao e multipla
 /// de 256 bytes) — remonta um buffer RGBA compacto (sem padding), o formato
@@ -123,14 +187,19 @@ fn strip_row_padding(raw: &[u8], width: u32, height: u32, row_pitch: u32) -> Vec
 /// alvo — usado tanto pelo stream contínuo (`ScreenCapture`) quanto pela
 /// miniatura de um frame só (`ThumbnailCapture`, issue #18).
 fn frame_to_jpeg_base64(frame: &mut Frame, target_height: Option<u32>, jpeg_quality: u8) -> Result<String, String> {
-    let mut buffer = frame.buffer().map_err(|error| error.to_string())?;
+    let mut buffer = frame.buffer().map_err(|error| {
+        eprintln!("[capture] frame.buffer() falhou: {error:?}");
+        error.to_string()
+    })?;
     let width = buffer.width();
     let height = buffer.height();
     let row_pitch = buffer.row_pitch();
     let raw = buffer.as_raw_buffer();
 
     let packed = strip_row_padding(raw, width, height, row_pitch);
+    let packed_len = packed.len();
     let Some(image) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, packed) else {
+        eprintln!("[capture] ImageBuffer::from_raw falhou: width={width} height={height} row_pitch={row_pitch} packed_len={packed_len}");
         return Err("capture-frame-decode-failed".into());
     };
 
@@ -142,10 +211,20 @@ fn frame_to_jpeg_base64(frame: &mut Frame, target_height: Option<u32>, jpeg_qual
         _ => image,
     };
 
+    // JPEG nao suporta canal alfa (achado real via teste isolado —
+    // `JpegEncoder::encode` com `ColorType::Rgba8` sempre falhava com
+    // `Unsupported(Color(Rgba8))`, silenciosamente: era exatamente aqui que
+    // todo frame morria, nunca chegando a emitir nada pro frontend). O
+    // buffer capturado (WGC) sempre vem com 4 canais mesmo pra conteudo
+    // opaco — descarta o alfa (`into_rgb8`) antes de codificar.
+    let rgb = image::DynamicImage::ImageRgba8(resized).into_rgb8();
     let mut jpeg = Vec::new();
     JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality)
-        .encode(resized.as_raw(), resized.width(), resized.height(), ColorType::Rgba8.into())
-        .map_err(|error| error.to_string())?;
+        .encode(rgb.as_raw(), rgb.width(), rgb.height(), ColorType::Rgb8.into())
+        .map_err(|error| {
+            eprintln!("[capture] JpegEncoder::encode falhou: {error:?}");
+            error.to_string()
+        })?;
     Ok(BASE64.encode(&jpeg))
 }
 
@@ -157,6 +236,7 @@ pub struct CaptureFlags {
 pub struct ScreenCapture {
     app: AppHandle,
     quality: Quality,
+    frame_count: u64,
 }
 
 impl GraphicsCaptureApiHandler for ScreenCapture {
@@ -164,7 +244,8 @@ impl GraphicsCaptureApiHandler for ScreenCapture {
     type Error = String;
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-        Ok(Self { app: ctx.flags.app, quality: ctx.flags.quality })
+        eprintln!("[capture] sessao de captura iniciada de verdade");
+        Ok(Self { app: ctx.flags.app, quality: ctx.flags.quality, frame_count: 0 })
     }
 
     /// Nunca grava frame em disco nem loga o conteudo da tela (issue #23: log de
@@ -172,12 +253,29 @@ impl GraphicsCaptureApiHandler for ScreenCapture {
     /// codifica em JPEG e emite pro frontend, que desenha num canvas oculto e
     /// gera o `MediaStream` real via `canvas.captureStream()`.
     fn on_frame_arrived(&mut self, frame: &mut Frame, _control: InternalCaptureControl) -> Result<(), Self::Error> {
+        self.frame_count += 1;
+        // Diagnostico temporario (issue #8: "tela fica cinza") — so os 3
+        // primeiros frames e depois 1 a cada 60, nunca o conteudo em si.
+        if self.frame_count <= 3 || self.frame_count % 60 == 0 {
+            eprintln!(
+                "[capture] frame #{} chegou: {}x{}",
+                self.frame_count,
+                frame.width(),
+                frame.height()
+            );
+        }
         let payload = frame_to_jpeg_base64(frame, self.quality.target_height(), self.quality.jpeg_quality())?;
-        let _ = self.app.emit("capture-frame", payload);
+        if self.frame_count <= 3 {
+            eprintln!("[capture] frame #{} codificado em jpeg, {} bytes base64", self.frame_count, payload.len());
+        }
+        if let Err(error) = self.app.emit("capture-frame", payload) {
+            eprintln!("[capture] emit(capture-frame) falhou: {error:?}");
+        }
         Ok(())
     }
 
     fn on_closed(&mut self) -> Result<(), Self::Error> {
+        eprintln!("[capture] sessao encerrada apos {} frame(s)", self.frame_count);
         let _ = self.app.emit("capture-ended", ());
         Ok(())
     }
@@ -191,56 +289,65 @@ fn running() -> &'static Mutex<Option<RunningCapture>> {
 }
 
 #[tauri::command]
-pub fn start_capture(app: AppHandle, source_id: String, quality: Quality) -> Result<(), String> {
+pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u32) -> Result<(), String> {
     {
         let guard = running().lock().unwrap();
         if guard.is_some() {
             return Err("capture-already-running".into());
         }
     }
+    let update_interval = update_interval_for_fps(fps);
 
     // `start_free_threaded` exige `T: Send` (o item cruza pra uma thread nova
     // que ele mesmo cria) — `GraphicsCaptureItemType` (o enum unificado de
     // `resolve_item`) carrega um `HwndGuard`/`HWND` cru que NÃO é `Send`, só
     // por causa da variante `Unknown` do seletor nativo (que nunca usamos
     // aqui). Por isso este comando resolve pro tipo concreto (`Monitor` ou
-    // `Window`, que são `Send`) em vez de reusar `resolve_item` — diferente
-    // de `capture_thumbnail`, que usa `start()` (bloqueante, sem essa
-    // exigência) e pode reusar o enum unificado sem problema.
-    let control = if let Some(index_str) = source_id.strip_prefix("monitor:") {
-        let index: usize = index_str.parse().map_err(|_| "capture-source-not-found")?;
-        let monitor = Monitor::from_index(index).map_err(|_| "capture-source-not-found")?;
-        let settings = Settings::new(
-            monitor,
-            CursorCaptureSettings::Default,
-            DrawBorderSettings::Default,
-            SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
-            DirtyRegionSettings::Default,
-            ColorFormat::Rgba8,
-            CaptureFlags { app: app.clone(), quality },
-        );
-        ScreenCapture::start_free_threaded(settings).map_err(|_| "capture-start-failed".to_string())?
-    } else if let Some(hwnd_str) = source_id.strip_prefix("window:") {
-        let hwnd: isize = hwnd_str.parse().map_err(|_| "capture-source-not-found")?;
-        let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
-        if !window.is_valid() {
-            return Err("capture-source-not-found".into());
+    // `Window`, que são `Send`) em vez de reusar `resolve_item`. Tudo roda
+    // dentro de `run_on_fresh_thread` (ver comentário acima) por causa do
+    // `FailedToInitWinRT`.
+    let control = run_on_fresh_thread(move || -> Result<RunningCapture, String> {
+        if let Some(index_str) = source_id.strip_prefix("monitor:") {
+            let index: usize = index_str.parse().map_err(|_| "capture-source-not-found".to_string())?;
+            let monitor = Monitor::from_index(index).map_err(|_| "capture-source-not-found".to_string())?;
+            let settings = Settings::new(
+                monitor,
+                CursorCaptureSettings::Default,
+                DrawBorderSettings::WithoutBorder,
+                SecondaryWindowSettings::Default,
+                update_interval,
+                DirtyRegionSettings::Default,
+                ColorFormat::Rgba8,
+                CaptureFlags { app: app.clone(), quality },
+            );
+            ScreenCapture::start_free_threaded(settings).map_err(|error| {
+                eprintln!("[capture] start_free_threaded (monitor) falhou: {error:?}");
+                "capture-start-failed".to_string()
+            })
+        } else if let Some(hwnd_str) = source_id.strip_prefix("window:") {
+            let hwnd: isize = hwnd_str.parse().map_err(|_| "capture-source-not-found".to_string())?;
+            let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
+            if !window.is_valid() {
+                return Err("capture-source-not-found".into());
+            }
+            let settings = Settings::new(
+                window,
+                CursorCaptureSettings::Default,
+                DrawBorderSettings::WithoutBorder,
+                SecondaryWindowSettings::Default,
+                update_interval,
+                DirtyRegionSettings::Default,
+                ColorFormat::Rgba8,
+                CaptureFlags { app: app.clone(), quality },
+            );
+            ScreenCapture::start_free_threaded(settings).map_err(|error| {
+                eprintln!("[capture] start_free_threaded (window) falhou: {error:?}");
+                "capture-start-failed".to_string()
+            })
+        } else {
+            Err("capture-source-not-found".into())
         }
-        let settings = Settings::new(
-            window,
-            CursorCaptureSettings::Default,
-            DrawBorderSettings::Default,
-            SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
-            DirtyRegionSettings::Default,
-            ColorFormat::Rgba8,
-            CaptureFlags { app: app.clone(), quality },
-        );
-        ScreenCapture::start_free_threaded(settings).map_err(|_| "capture-start-failed".to_string())?
-    } else {
-        return Err("capture-source-not-found".into());
-    };
+    })??;
 
     *running().lock().unwrap() = Some(control);
     Ok(())
@@ -281,25 +388,37 @@ impl GraphicsCaptureApiHandler for ThumbnailCapture {
 
 #[tauri::command]
 pub fn capture_thumbnail(source_id: String) -> Result<String, String> {
-    let item = resolve_item(&source_id)?;
-    let (tx, rx) = mpsc::channel();
-    let settings = Settings::new(
-        item,
-        CursorCaptureSettings::Default,
-        DrawBorderSettings::Default,
-        SecondaryWindowSettings::Default,
-        MinimumUpdateIntervalSettings::Default,
-        DirtyRegionSettings::Default,
-        ColorFormat::Rgba8,
-        ThumbnailFlags { tx },
-    );
-    // `start` (nao `start_free_threaded`) de proposito: bloqueia a thread
-    // deste comando ate o handler chamar `control.stop()` no primeiro
-    // frame — o comando Tauri ja roda numa thread do pool do runtime, nao
-    // trava a UI (que so aguarda a promise resolver do lado do frontend).
-    ThumbnailCapture::start(settings).map_err(|_| "capture-thumbnail-failed".to_string())?;
-    rx.recv_timeout(Duration::from_secs(5))
-        .map_err(|_| "capture-thumbnail-timeout".to_string())?
+    // `run_on_fresh_thread` (ver comentário acima, `FailedToInitWinRT`): o
+    // `resolve_item` (`.try_into()` pra `GraphicsCaptureItemType`) e o
+    // `ThumbnailCapture::start` de baixo tocam WinRT e precisam de uma
+    // thread sem COM inicializado ainda — a que o Tauri entrega esse
+    // comando já está em modo STA (WebView2).
+    run_on_fresh_thread(move || -> Result<String, String> {
+        let item = resolve_item(&source_id)?;
+        let (tx, rx) = mpsc::channel();
+        let settings = Settings::new(
+            item,
+            CursorCaptureSettings::Default,
+            DrawBorderSettings::WithoutBorder,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Default,
+            DirtyRegionSettings::Default,
+            ColorFormat::Rgba8,
+            ThumbnailFlags { tx },
+        );
+        // `start` (nao `start_free_threaded`) de proposito: bloqueia esta
+        // thread (que já é a thread nova de `run_on_fresh_thread`, não a
+        // do Tauri) até o handler chamar `control.stop()` no primeiro frame.
+        ThumbnailCapture::start(settings).map_err(|error| {
+            eprintln!("[capture] miniatura (start) falhou: {error:?}");
+            "capture-thumbnail-failed".to_string()
+        })?;
+        rx.recv_timeout(Duration::from_secs(5))
+            .map_err(|error| {
+                eprintln!("[capture] miniatura: nenhum frame chegou a tempo: {error:?}");
+                "capture-thumbnail-timeout".to_string()
+            })?
+    })?
 }
 
 #[tauri::command]
@@ -316,6 +435,21 @@ pub fn stop_capture() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clamp_fps_keeps_reasonable_values_and_bounds_the_rest() {
+        assert_eq!(clamp_fps(30), 30);
+        assert_eq!(clamp_fps(0), 5); // 0 causaria divisao por zero no Duration
+        assert_eq!(clamp_fps(1000), 60);
+    }
+
+    #[test]
+    fn update_interval_for_fps_matches_the_requested_cadence() {
+        let MinimumUpdateIntervalSettings::Custom(interval) = update_interval_for_fps(30) else {
+            panic!("esperava MinimumUpdateIntervalSettings::Custom");
+        };
+        assert!((interval.as_secs_f64() - 1.0 / 30.0).abs() < 1e-9);
+    }
 
     #[test]
     fn quality_presets_have_the_expected_target_height() {
@@ -350,5 +484,28 @@ mod tests {
         let raw = [0u8; 4]; // bem menor que o esperado pra 2x2 RGBA
         let packed = strip_row_padding(&raw, 2, 2, 8);
         assert!(packed.len() < 16, "deveria parar cedo em vez de tentar ler fora do buffer");
+    }
+
+    /// Regressao (issue #8) — `JpegEncoder::encode` rejeita `ColorType::Rgba8`
+    /// (`Unsupported(Color(Rgba8))`); todo frame de verdade (buffer WGC
+    /// sempre vem com 4 canais, mesmo pra conteudo opaco) morria silenciosamente
+    /// nesse ponto exato ate `frame_to_jpeg_base64` passar a descartar o alfa
+    /// (`into_rgb8()`) antes de codificar. `Frame` do `windows-capture` nao da
+    /// pra construir fora de uma sessao de captura real, entao este teste
+    /// replica só o resize+encode com as mesmas dimensoes de um frame real.
+    #[test]
+    fn resize_then_jpeg_encode_succeeds_on_an_rgba_buffer_like_a_real_frame() {
+        let width = 1920u32;
+        let height = 1032u32;
+        let pixels = vec![128u8; (width * height * 4) as usize];
+        let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, pixels).unwrap();
+        let resized = image::imageops::resize(&image, 446, 240, image::imageops::FilterType::Triangle);
+        let rgb = image::DynamicImage::ImageRgba8(resized).into_rgb8();
+
+        let mut jpeg = Vec::new();
+        JpegEncoder::new_with_quality(&mut jpeg, 60)
+            .encode(rgb.as_raw(), rgb.width(), rgb.height(), ColorType::Rgb8.into())
+            .expect("encode deveria ter sucesso depois de descartar o canal alfa");
+        assert!(!jpeg.is_empty());
     }
 }

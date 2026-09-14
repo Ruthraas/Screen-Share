@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
-import { captureThumbnail, listCaptureSources, type CaptureQuality, type CaptureSource, type CaptureSourceKind } from "../../services/captureClient";
+import { captureThumbnail, listCaptureSources, type CaptureFps, type CaptureQuality, type CaptureSource, type CaptureSourceKind } from "../../services/captureClient";
 
 const QUALITY_OPTIONS: { value: CaptureQuality; label: string }[] = [
   { value: "hd1080", label: "1080p" },
   { value: "hd720", label: "720p" },
   { value: "auto", label: "automatico" },
+];
+
+const FPS_OPTIONS: { value: CaptureFps; label: string }[] = [
+  { value: 15, label: "15 fps" },
+  { value: 30, label: "30 fps" },
+  { value: 60, label: "60 fps" },
 ];
 
 const TABS: { value: CaptureSourceKind; label: string }[] = [
@@ -41,6 +47,7 @@ function CaptureSourceCard({ source, selected, onSelect }: { source: CaptureSour
         ) : (
           <span className="capture-source-card__fallback">
             <span className="cursor cursor--blink" aria-hidden="true" />
+            <span>carregando previa</span>
           </span>
         )}
       </span>
@@ -64,7 +71,7 @@ export function CaptureSourcePicker({
 }: {
   open: boolean;
   onClose: () => void;
-  onStart: (sourceId: string, quality: CaptureQuality, audioEnabled: boolean) => void;
+  onStart: (sourceId: string, quality: CaptureQuality, audioEnabled: boolean, fps: CaptureFps) => void;
 }) {
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -72,6 +79,7 @@ export function CaptureSourcePicker({
   const [tab, setTab] = useState<CaptureSourceKind>("window");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quality, setQuality] = useState<CaptureQuality>("hd1080");
+  const [fps, setFps] = useState<CaptureFps>(30);
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   useEffect(() => {
@@ -132,12 +140,24 @@ export function CaptureSourcePicker({
                   </button>
                 ))}
               </div>
+              <div className="capture-quality-list">
+                {FPS_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`capture-quality-item ${fps === option.value ? "is-selected" : ""}`}
+                    onClick={() => setFps(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <label className="capture-audio-toggle">
                 <input type="checkbox" checked={audioEnabled} onChange={event => setAudioEnabled(event.target.checked)} />
                 <span>compartilhar som do sistema</span>
               </label>
             </div>
-            <Button wide disabled={!selectedId} onClick={() => selectedId && onStart(selectedId, quality, audioEnabled)}>
+            <Button wide disabled={!selectedId} onClick={() => selectedId && onStart(selectedId, quality, audioEnabled, fps)}>
               {'>'} iniciar
             </Button>
           </>

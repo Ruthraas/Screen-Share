@@ -35,3 +35,7 @@ base64 = "0.23"
 # Audio do sistema (loopback) pra compartilhar junto da tela — decisao de
 # produto de 2026-09-13, nunca microfone (ver src/audio.rs).
 wasapi = "0.24"
+# So pra DwmGetWindowAttribute (DWMWA_CLOAKED) em list_capture_sources —
+# `windows-capture` ja usa a versao 0.62.x da crate `windows` internamente,
+# fixando a mesma versao aqui reusa a mesma compilacao em vez de puxar outra.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }

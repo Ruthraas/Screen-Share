@@ -11,9 +11,36 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export type CaptureSourceKind = "monitor" | "window";
 export type CaptureSource = { id: string; label: string; kind: CaptureSourceKind };
 export type CaptureQuality = "auto" | "hd720" | "hd1080";
+export type CaptureFps = 15 | 30 | 60;
 
 function assertTauri(): void {
   if (!isTauri()) throw new Error("captura so funciona dentro do aplicativo desktop");
+}
+
+/** Códigos que `src-tauri/src/capture.rs`/`audio.rs` devolvem via `Err(String)`
+ * — o Tauri rejeita a promise do `invoke` com essa string CRUA (não um
+ * `Error`), então `error instanceof Error` é sempre falso pra esses casos;
+ * quem trata o erro precisa passar pela extração abaixo, não só checar
+ * `instanceof Error`, senão perde o código real e cai num fallback genérico. */
+const CAPTURE_ERROR_MESSAGES: Record<string, string> = {
+  "capture-enumerate-failed": "nao foi possivel listar telas/janelas",
+  "capture-source-not-found": "essa fonte nao esta mais disponivel, tente escolher de novo",
+  "capture-already-running": "ja existe uma captura em andamento",
+  "capture-start-failed": "nao foi possivel iniciar a captura dessa fonte",
+  "capture-thumbnail-failed": "nao foi possivel gerar a previa dessa fonte",
+  "capture-thumbnail-timeout": "a previa demorou demais pra responder",
+  "capture-thread-panic": "falha interna ao iniciar a captura",
+  "capture-frame-decode-failed": "falha ao decodificar um frame capturado",
+  "audio-already-running": "o audio do sistema ja esta sendo capturado",
+};
+
+/** Extrai uma mensagem legivel de qualquer coisa que um `invoke()` rejeitado
+ * possa lançar: um `Error` de verdade, ou — o caso comum aqui, já que os
+ * comandos Rust devolvem `Err(String)` — a string crua do código. */
+export function captureErrorMessage(error: unknown): string {
+  const code = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
+  if (!code) return "nao foi possivel completar a operacao de captura";
+  return CAPTURE_ERROR_MESSAGES[code] ?? `nao foi possivel completar a operacao de captura (${code})`;
 }
 
 export async function listCaptureSources(): Promise<CaptureSource[]> {
@@ -21,9 +48,9 @@ export async function listCaptureSources(): Promise<CaptureSource[]> {
   return invoke<CaptureSource[]>("list_capture_sources");
 }
 
-export async function startCapture(sourceId: string, quality: CaptureQuality): Promise<void> {
+export async function startCapture(sourceId: string, quality: CaptureQuality, fps: CaptureFps): Promise<void> {
   assertTauri();
-  await invoke("start_capture", { sourceId, quality });
+  await invoke("start_capture", { sourceId, quality, fps });
 }
 
 export async function stopCapture(): Promise<void> {

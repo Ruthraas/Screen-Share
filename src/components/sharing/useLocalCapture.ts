@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { log } from "../../services/logger";
 import {
+  captureErrorMessage,
   onAudioChunk,
   onAudioError,
   onAudioFormat,
@@ -11,14 +12,45 @@ import {
   stopCapture,
   stopSystemAudioCapture,
   type AudioFormat,
+  type CaptureFps,
   type CaptureQuality,
 } from "../../services/captureClient";
 import { base64ToBytes, decodeInterleavedPcm } from "./pcmAudio";
+import { setSharingActive } from "../../services/sharingState";
 
 export type LocalCaptureStatus = "idle" | "starting" | "active" | "error";
 
 function base64JpegToBlob(base64: string): Blob {
   return new Blob([base64ToBytes(base64)], { type: "image/jpeg" });
+}
+
+/** Confirmação sonora de que a transmissão começou — pedido do usuário.
+ * Duas notas curtas sintetizadas na hora (sem precisar de nenhum arquivo de
+ * áudio embutido). Nunca deve derrubar a captura se o Web Audio falhar por
+ * algum motivo (autoplay policy, por exemplo) — só não toca o som. */
+function playStartChime(): void {
+  try {
+    const context = new AudioContext();
+    const now = context.currentTime;
+    const notes = [523.25, 659.25]; // C5, E5 — soa como uma confirmação, nao um alarme
+    for (const [index, frequency] of notes.entries()) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      const startAt = now + index * 0.11;
+      gain.gain.setValueAtTime(0, startAt);
+      gain.gain.linearRampToValueAtTime(0.15, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.18);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.2);
+    }
+    setTimeout(() => { context.close().catch(() => {}); }, 500);
+  } catch {
+    // Web Audio indisponivel — silencioso, nao deve travar a captura.
+  }
 }
 
 /**
@@ -43,6 +75,11 @@ export function useLocalCapture() {
   const [status, setStatus] = useState<LocalCaptureStatus>("idle");
   const [error, setError] = useState<string | undefined>(undefined);
   const [stream, setStream] = useState<MediaStream | undefined>(undefined);
+  // Existe um intervalo real entre `start_capture` responder com sucesso e
+  // o primeiro `capture-frame` de verdade chegar — sem isso, a tela fica
+  // em branco por um instante e parece travada. `ScreenViewer` usa isso pra
+  // mostrar "carregando tela" até o primeiro frame ser desenhado de verdade.
+  const [hasFrame, setHasFrame] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const decodingRef = useRef(false);
@@ -53,6 +90,8 @@ export function useLocalCapture() {
   const audioEnabledRef = useRef(false);
 
   const teardown = useCallback(() => {
+    setSharingActive(false);
+    setHasFrame(false);
     for (const unlisten of unlistenRef.current) unlisten();
     unlistenRef.current = [];
     setStream(current => {
@@ -69,7 +108,7 @@ export function useLocalCapture() {
     }
   }, []);
 
-  const start = useCallback(async (sourceId: string, quality: CaptureQuality, audioEnabled: boolean) => {
+  const start = useCallback(async (sourceId: string, quality: CaptureQuality, audioEnabled: boolean, fps: CaptureFps = 30) => {
     setStatus("starting");
     setError(undefined);
     try {
@@ -91,6 +130,7 @@ export function useLocalCapture() {
           }
           context.drawImage(bitmap, 0, 0);
           bitmap.close();
+          setHasFrame(true);
         } catch (frameError) {
           log.warn("capture", "falha ao decodificar frame recebido", {
             name: frameError instanceof Error ? frameError.name : "unknown",
@@ -106,7 +146,7 @@ export function useLocalCapture() {
       });
       const unlisteners = [unlistenFrame, unlistenEnded];
 
-      const videoTracks = canvas.captureStream(30).getVideoTracks();
+      const videoTracks = canvas.captureStream(fps).getVideoTracks();
       let audioDestination: MediaStreamAudioDestinationNode | null = null;
 
       if (audioEnabled) {
@@ -148,7 +188,7 @@ export function useLocalCapture() {
 
       unlistenRef.current = unlisteners;
 
-      await startCapture(sourceId, quality);
+      await startCapture(sourceId, quality, fps);
       if (audioEnabled) {
         audioEnabledRef.current = true;
         try {
@@ -165,11 +205,13 @@ export function useLocalCapture() {
       const combined = new MediaStream([...videoTracks, ...(audioDestination?.stream.getAudioTracks() ?? [])]);
       setStream(combined);
       setStatus("active");
-      log.info("capture", "captura local iniciada", { quality, audio: audioEnabled });
+      setSharingActive(true);
+      playStartChime();
+      log.info("capture", "captura local iniciada", { quality, fps, audio: audioEnabled });
     } catch (startError) {
       teardown();
       setStatus("error");
-      const message = startError instanceof Error ? startError.message : "nao foi possivel iniciar a captura";
+      const message = captureErrorMessage(startError);
       setError(message);
       log.warn("capture", "falha ao iniciar captura local", { message });
     }
@@ -189,5 +231,5 @@ export function useLocalCapture() {
 
   useEffect(() => () => { teardown(); void stopCapture().catch(() => {}); }, [teardown]);
 
-  return { status, error, stream, start, stop };
+  return { status, error, stream, hasFrame, start, stop };
 }
