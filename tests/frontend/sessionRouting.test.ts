@@ -24,6 +24,12 @@ test("login route resolves to home when the account already has groups", () => {
   assert.equal(routeAfterLogin("share", { groups: [{ id: "g1", name: "dev" }], selectedId: "g1" }), "share");
 });
 
+test("room route requires a selected group, falls back to the group list otherwise", () => {
+  assert.equal(routeAfterLogin("room", { groups: [{ id: "g1", name: "dev" }], selectedId: "g1" }), "room");
+  assert.equal(routeAfterLogin("room", { groups: [{ id: "g1", name: "dev" }], selectedId: null }), "multi");
+  assert.equal(routeAfterLogin("room", { groups: [], selectedId: null }), "multi");
+});
+
 test("route hash parser rejects unknown routes", () => {
   assert.equal(parseRouteHash("#/profile"), "profile");
   assert.equal(parseRouteHash("#/unknown"), "login");

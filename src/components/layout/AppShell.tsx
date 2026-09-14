@@ -90,7 +90,7 @@ export function AppShell({
           <button className={`nav-button ${route === "home" || route === "share" || route === "empty" ? "is-active" : ""}`} onClick={() => navigate("home")} title="inicio">
             <IconHome />
           </button>
-          <button className={`nav-button ${route === "multi" ? "is-active" : ""}`} onClick={() => navigate("multi")} title="grupos">
+          <button className={`nav-button ${route === "multi" || route === "room" ? "is-active" : ""}`} onClick={() => navigate("multi")} title="grupos">
             <IconUsers />
           </button>
           <button className={`nav-button ${route === "settings" || route === "profile" ? "is-active" : ""}`} onClick={() => navigate("settings")} title="configuracoes">

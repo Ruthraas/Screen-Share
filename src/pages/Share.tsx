@@ -38,7 +38,7 @@ export function Share({ navigate: _navigate }: { navigate: (route: Route) => voi
               {status === "starting" ? "iniciando" : "> iniciar"}
             </Button>
             {error ? <small role="alert" className="auth-status">{error}</small> : null}
-            <small className="muted">so voce ve sua tela por enquanto — enviar pra outros participantes ainda nao esta disponivel</small>
+            <small className="muted">outros participantes do grupo veem sua tela em "grupos" assim que voce iniciar</small>
           </div>
         </div>
       </div>
