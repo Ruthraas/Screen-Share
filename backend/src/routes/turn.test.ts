@@ -7,10 +7,10 @@ import { testAuthConfig } from "../testing/testAuthConfig.js";
 import { fakeTurnProvider, failingTurnProvider } from "../testing/fakeTurnProvider.js";
 import type { TurnCredentialsProvider } from "../turn/cloudflareTurnProvider.js";
 
-function build(turnProvider: TurnCredentialsProvider = fakeTurnProvider()) {
+async function build(turnProvider: TurnCredentialsProvider = fakeTurnProvider()) {
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider,
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
@@ -27,7 +27,7 @@ test("usuário autenticado recebe iceServers e ttlSeconds", async () => {
     { urls: ["stun:stun.cloudflare.com:3478"] },
     { urls: ["turn:turn.cloudflare.com:3478?transport=udp"], username: "u", credential: "c" },
   ];
-  const app = build(fakeTurnProvider(iceServers));
+  const app = await build(fakeTurnProvider(iceServers));
   try {
     const response = await app.inject({ method: "POST", url: "/v1/turn-credentials", headers: auth("owner1") });
     assert.equal(response.statusCode, 201);
@@ -42,7 +42,7 @@ test("usuário autenticado recebe iceServers e ttlSeconds", async () => {
 
 test("sem token responde 401, nunca chama o provider de TURN", async () => {
   let called = false;
-  const app = build({
+  const app = await build({
     async generateIceServers() {
       called = true;
       return [];
@@ -58,7 +58,7 @@ test("sem token responde 401, nunca chama o provider de TURN", async () => {
 });
 
 test("falha no provedor de TURN (ex.: Cloudflare fora do ar) responde 502, nunca 500 genérico", async () => {
-  const app = build(failingTurnProvider("Cloudflare fora do ar (teste)"));
+  const app = await build(failingTurnProvider("Cloudflare fora do ar (teste)"));
   try {
     const response = await app.inject({ method: "POST", url: "/v1/turn-credentials", headers: auth("owner1") });
     assert.equal(response.statusCode, 502);
@@ -69,7 +69,7 @@ test("falha no provedor de TURN (ex.: Cloudflare fora do ar) responde 502, nunca
 });
 
 test("rate limit por IP: excede o máximo responde 429", async () => {
-  const app = build();
+  const app = await build();
   try {
     let last;
     for (let i = 0; i < 11; i++) {

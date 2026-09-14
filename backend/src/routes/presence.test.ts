@@ -6,10 +6,10 @@ import { createTestDb } from "../testing/testDb.js";
 import { testAuthConfig } from "../testing/testAuthConfig.js";
 import { fakeTurnProvider } from "../testing/fakeTurnProvider.js";
 
-function build() {
+async function build() {
   return buildServer({
     verifier: new FakeTokenVerifier(),
-    db: createTestDb(),
+    db: await createTestDb(),
     authConfig: testAuthConfig(),
     turnProvider: fakeTurnProvider(),
     corsAllowedOrigins: ["http://127.0.0.1:5173"],
@@ -32,7 +32,7 @@ async function createGroup(app: ReturnType<typeof build>, ownerUid: string) {
 }
 
 test("heartbeat de membro aparece na lista de presença do grupo", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
 
@@ -58,7 +58,7 @@ test("heartbeat de membro aparece na lista de presença do grupo", async () => {
 });
 
 test("quem não é membro não consegue enviar heartbeat nem ver presença (404)", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
 
@@ -81,7 +81,7 @@ test("quem não é membro não consegue enviar heartbeat nem ver presença (404)
 });
 
 test("grupo sem nenhum heartbeat responde lista vazia, não erro", async () => {
-  const app = build();
+  const app = await build();
   try {
     const group = await createGroup(app, "owner1");
     const list = await app.inject({

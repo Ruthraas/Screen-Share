@@ -243,6 +243,54 @@ mas com TLS/processo/atualização manuais).
 - Passo a passo operacional (fora do escopo de decisão de arquitetura) em
   `docs/backend/HOSPEDAGEM.md`.
 
+**Adendo (issue #82, 2026-09-14): banco migrado de `better-sqlite3` (SQLite
+local, síncrono) para `@libsql/client`/Turso (libSQL remoto, assíncrono) —
+gatilho foi orçamento, não capacidade medida.** O adendo anterior já
+registrava esse caminho como próximo passo condicional ("se o limite
+gratuito do Fly não sustentar na prática"); o gatilho real foi diferente do
+previsto — o time não tem orçamento pra nenhuma hospedagem paga
+(`min_machines_running = 1` sem auto-stop custa dinheiro no Fly além de um
+certo uso, ao contrário de um Volume ficar de graça indefinidamente), então
+a rota "backend sem estado" foi adotada preventivamente em vez de esperar
+um limite real ser atingido. `better-sqlite3`/`@types/better-sqlite3`
+removidos do `package.json` — nenhum uso restante em `src/`.
+
+- **O que muda**: só a camada de banco. `src/db/connection.ts`,
+  `src/db/migrate.ts`, `src/auth/userRepository.ts`,
+  `src/groups/repository.ts` e todo chamador na cadeia de rotas
+  (`src/routes/*.ts`, `src/authz/policy.ts`, `src/signaling/plugin.ts`)
+  viraram assíncronos — efeito colateral mecânico de trocar um driver
+  síncrono por um cliente de rede, não um redesenho. `src/config.ts` ganhou
+  `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` (produção, mutuamente exclusivo
+  com `DATABASE_PATH`) — `DATABASE_PATH` continua existindo pra dev/teste
+  local (`:memory:` ou `file:./caminho`), sem precisar de rede pra rodar a
+  suíte de testes.
+- **A decisão de hospedagem em Fly.io (adendo acima) não muda por causa
+  disto**: o Fly continua sendo onde o processo Node roda; só deixa de
+  precisar do Volume persistente, já que o estado agora mora no Turso.
+  Reavaliar hospedagem separadamente se o orçamento ou os limites gratuitos
+  mudarem.
+- **Achado real durante a migração, não hipotético**: `if
+  (!opts.groupsRepo.getRole(...))` em `src/signaling/plugin.ts` — ao virar
+  `getRole` assíncrono, `!promise` é sempre `false` (Promise é um objeto,
+  sempre truthy), o que teria desligado silenciosamente a checagem de
+  autorização de membership no WebSocket (handshake e revalidação por
+  mensagem). O compilador TypeScript não acusa isso (`!` aceita qualquer
+  tipo sem estreitar). Achado só por revisão manual, dirigida — não por
+  `tsc --noEmit`, que enumera onde uma chamada quebra mas não decide se a
+  correção (`await` vs. reestruturar) preserva a semântica de segurança
+  original. Fica registrado aqui como classe de risco pra qualquer futura
+  conversão síncrono→assíncrono neste repo: auditar manualmente toda
+  negação booleana (`!chamada(...)`) de uma função que passou a devolver
+  Promise, não confiar só no compilador.
+- **Ainda pendente**: nenhum banco Turso real foi criado ainda — as
+  credenciais de produção (`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`) faltam
+  em `backend/.env`. A suíte de testes (170 casos) roda inteira contra
+  libSQL local em memória, sem rede, então não depende disso. Passo a
+  passo operacional (criação do banco, migração de dados se houver,
+  variáveis de ambiente em produção) fica em `docs/backend/HOSPEDAGEM.md`
+  quando esse passo acontecer.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |

@@ -95,11 +95,11 @@ export function registerAuthRoutes(
 ): void {
   const RATE_LIMITS = buildAuthRateLimits(rateLimits);
 
-  function issueSession(identity: AuthIdentity): { accessToken: string; refreshToken: string } {
+  async function issueSession(identity: AuthIdentity): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = issueAccessToken(identity, authConfig.sessionSigningSecret);
     const refreshValue = newRefreshTokenValue();
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
-    userRepo.createRefreshToken(identity.uid, hashRefreshToken(refreshValue), expiresAt);
+    await userRepo.createRefreshToken(identity.uid, hashRefreshToken(refreshValue), expiresAt);
     return { accessToken, refreshToken: refreshValue };
   }
 
@@ -118,7 +118,7 @@ export function registerAuthRoutes(
   app.post("/v1/auth/register", { config: { rateLimit: RATE_LIMITS.register } }, async (request, reply) => {
     const body = parseOrThrow(registerSchema, request.body);
     const passwordHash = await hashPassword(body.password, authConfig.passwordPepper);
-    const user = userRepo.createWithPassword(body.email, passwordHash);
+    const user = await userRepo.createWithPassword(body.email, passwordHash);
     reply.code(201);
     return issueSession(identityFromUser(user));
   });
@@ -127,7 +127,7 @@ export function registerAuthRoutes(
     const body = parseOrThrow(loginSchema, request.body);
     const genericError = () => new UnauthorizedError("E-mail ou senha inválidos.");
 
-    const user = userRepo.findByEmail(body.email);
+    const user = await userRepo.findByEmail(body.email);
     if (!user || !user.passwordHash) throw genericError();
 
     const valid = await verifyPassword(body.password, authConfig.passwordPepper, user.passwordHash);
@@ -140,13 +140,13 @@ export function registerAuthRoutes(
     const body = parseOrThrow(refreshSchema, request.body);
     const invalid = () => new UnauthorizedError("Refresh token inválido ou expirado.");
 
-    const active = userRepo.findActiveRefreshToken(hashRefreshToken(body.refreshToken));
+    const active = await userRepo.findActiveRefreshToken(hashRefreshToken(body.refreshToken));
     if (!active) throw invalid();
 
     // Rotação: o token usado morre já aqui, mesmo se algo falhar depois.
-    userRepo.revokeRefreshToken(active.id);
+    await userRepo.revokeRefreshToken(active.id);
 
-    const user = userRepo.findById(active.userId);
+    const user = await userRepo.findById(active.userId);
     if (!user) throw invalid();
 
     return issueSession(identityFromUser(user));
@@ -154,9 +154,9 @@ export function registerAuthRoutes(
 
   app.post("/v1/auth/logout", { config: { rateLimit: RATE_LIMITS.logout } }, async (request, reply) => {
     const body = parseOrThrow(logoutSchema, request.body);
-    const active = userRepo.findActiveRefreshToken(hashRefreshToken(body.refreshToken));
+    const active = await userRepo.findActiveRefreshToken(hashRefreshToken(body.refreshToken));
     // Idempotente: token já revogado/inexistente também responde 204.
-    if (active) userRepo.revokeRefreshToken(active.id);
+    if (active) await userRepo.revokeRefreshToken(active.id);
     reply.code(204);
   });
 
@@ -256,11 +256,11 @@ export function registerAuthRoutes(
           clientSecret: credentials.clientSecret,
         });
         const profile = await provider.fetchProfile(providerAccessToken);
-        const user = userRepo.findOrCreateOAuthUser(providerParam, profile.providerAccountId, profile.email, {
+        const user = await userRepo.findOrCreateOAuthUser(providerParam, profile.providerAccountId, profile.email, {
           displayName: profile.displayName,
           avatarUrl: profile.avatarUrl,
         });
-        const session = issueSession(identityFromUser(user));
+        const session = await issueSession(identityFromUser(user));
 
         const url = new URL(authConfig.oauthFrontendRedirectUrls[target]);
         url.hash = new URLSearchParams({

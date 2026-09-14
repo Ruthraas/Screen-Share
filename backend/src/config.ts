@@ -7,11 +7,18 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().max(65535).default(8787),
 
-  // Banco (issue #31) — sem valor padrão: exigimos escolha explícita de
-  // onde os dados persistem, em vez de gravar num caminho implícito.
-  DATABASE_PATH: z
-    .string()
-    .min(1, "DATABASE_PATH é obrigatória (ex.: ./data/screenshare.db ou :memory: em teste)"),
+  // Banco (issue #31, migrado pra Turso/libSQL na issue #82) — dois jeitos
+  // de apontar pro banco, mutuamente exclusivos na prática:
+  // DATABASE_PATH (arquivo local — dev/teste, ex. ./data/screenshare.db ou
+  // :memory:) OU TURSO_DATABASE_URL/TURSO_AUTH_TOKEN (banco remoto de
+  // produção, ex. libsql://screenshare-xyz.turso.io). Sem valor padrão pra
+  // nenhum dos dois — exigimos escolha explícita de onde os dados
+  // persistem, em vez de gravar num caminho implícito. Validado em
+  // buildDatabaseConfig() (precisa de pelo menos um dos dois, não dá pra
+  // expressar "A ou B obrigatório" só com zod().string() simples aqui).
+  DATABASE_PATH: z.string().min(1).optional(),
+  TURSO_DATABASE_URL: z.string().min(1).optional(),
+  TURSO_AUTH_TOKEN: z.string().min(1).optional(),
 
   // Autenticação própria (issue #30) — o Firebase Admin não é mais usado
   // pra verificar identidade. SESSION_SIGNING_SECRET assina access
@@ -107,7 +114,8 @@ export interface AppConfig {
   host: string;
   port: number;
   database: {
-    path: string;
+    url: string;
+    authToken?: string;
   };
   auth: {
     sessionSigningSecret: string;
@@ -159,6 +167,24 @@ function buildOAuthProviders(parsed: z.infer<typeof envSchema>): AppConfig["auth
   return providers;
 }
 
+/** Resolve a URL de conexão do banco (issue #82) a partir de
+ * TURSO_DATABASE_URL (produção) ou DATABASE_PATH (dev/teste, arquivo
+ * local ou `:memory:`) — o primeiro que existir vence; erro claro se
+ * nenhum dos dois foi configurado. `DATABASE_PATH` vira uma URL `file:`
+ * automaticamente quando ainda não parece uma (aceita path relativo
+ * simples, do jeito que já era usado antes desta issue). */
+function buildDatabaseConfig(parsed: z.infer<typeof envSchema>): AppConfig["database"] {
+  if (parsed.TURSO_DATABASE_URL) {
+    return { url: parsed.TURSO_DATABASE_URL, authToken: parsed.TURSO_AUTH_TOKEN };
+  }
+  if (parsed.DATABASE_PATH) {
+    const path = parsed.DATABASE_PATH;
+    const url = path === ":memory:" || path.includes("://") || path.startsWith("file:") ? path : `file:${path}`;
+    return { url };
+  }
+  throw new ConfigError(["DATABASE_PATH ou TURSO_DATABASE_URL: pelo menos um dos dois é obrigatório"]);
+}
+
 /**
  * Carrega e valida a configuração a partir do ambiente. Lança ConfigError
  * com uma mensagem clara (uma linha por problema) quando algo obrigatório
@@ -175,9 +201,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     host: parsed.HOST,
     port: parsed.PORT,
-    database: {
-      path: parsed.DATABASE_PATH,
-    },
+    database: buildDatabaseConfig(parsed),
     auth: {
       sessionSigningSecret: parsed.SESSION_SIGNING_SECRET,
       passwordPepper: parsed.PASSWORD_PEPPER,
@@ -222,7 +246,7 @@ export function toPublicSummary(config: AppConfig): Record<string, unknown> {
   return {
     host: config.host,
     port: config.port,
-    database: { path: config.database.path },
+    database: { url: config.database.url, authToken: config.database.authToken ? REDACTED : undefined },
     auth: {
       sessionSigningSecret: REDACTED,
       passwordPepper: REDACTED,

@@ -21,7 +21,7 @@ import signalingPlugin from "./signaling/plugin.js";
 import { ConnectRateLimiter } from "./signaling/connectRateLimiter.js";
 import { Metrics } from "./observability/metrics.js";
 import type { AppConfig } from "./config.js";
-import type Database from "better-sqlite3";
+import type { Client } from "@libsql/client";
 
 /** Lê `statusCode` de um erro desconhecido (ex.: FastifyError nativo) sem assumir sua forma. */
 function statusCodeOf(err: unknown): number | undefined {
@@ -46,7 +46,7 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
 export interface BuildServerOptions {
   verifier: TokenVerifier;
-  db: Database.Database;
+  db: Client;
   authConfig: AppConfig["auth"];
   turnProvider: TurnCredentialsProvider;
   corsAllowedOrigins: string[];
