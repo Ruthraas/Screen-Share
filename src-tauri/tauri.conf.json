@@ -34,13 +34,20 @@
     "copyright": "Copyright © 2026 ScreenShare",
     "shortDescription": "Compartilhamento de tela em grupos privados",
     "category": "SocialNetworking",
-    "homepage": "https://github.com/Ruthraas/Screen-Share"
+    "homepage": "https://github.com/Ruthraas/Screen-Share",
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "deep-link": {
       "desktop": {
         "schemes": ["screenshare"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMTU5OEY2MzFERTczMUEKUldRYWM5NHg5cGdWTU1taEtPRUJ5YVFxNVlDcEs5Y3prZDIvenJhTlU3QVFhVzRXZDVPN0pUTVgK",
+      "endpoints": [
+        "https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json"
+      ]
     }
   }
 }
