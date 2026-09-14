@@ -8,6 +8,7 @@ pub fn run() {
             desktop_auth::handle_second_instance_argv(argv);
         }))
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // O plugin só lê o esquema da config em `tauri.conf.json`; quem
             // efetivamente grava a chave do protocolo no Windows é este

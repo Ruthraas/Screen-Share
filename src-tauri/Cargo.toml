@@ -21,6 +21,13 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-deep-link = "2"
+# Verificar/instalar atualizações (issue #48) — manifesto e chave de
+# assinatura já publicados pela infraestrutura (issue #49,
+# `plugins.updater` em tauri.conf.json). No Windows, `Update::install()`/
+# `downloadAndInstall()` já reinicia o app sozinho depois de lançar o
+# instalador — não precisa do plugin `process`/`relaunch()` (produto é
+# Windows-only, ver README).
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 open = "5"

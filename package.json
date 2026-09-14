@@ -16,6 +16,7 @@
   "dependencies": {
     "@tabler/icons-react": "^3.46.0",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "@vitejs/plugin-react": "^5.0.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
