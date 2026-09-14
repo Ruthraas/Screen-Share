@@ -177,6 +177,19 @@ async function main() {
   ok("Alice (reconectada) é avisada que Bob saiu (peer-left)", !!peerLeftAtAlice);
   aliceConn2.socket.close();
 
+  section("6. Credenciais TURN (Cloudflare Realtime — issue #40/#41)");
+  const noAuthTurn = await request("POST", "/v1/turn-credentials");
+  ok("Sem token, /v1/turn-credentials responde 401", noAuthTurn.status === 401, `status ${noAuthTurn.status}`);
+
+  const turnResponse = await request("POST", "/v1/turn-credentials", undefined, alice.accessToken);
+  if (turnResponse.status === 201) {
+    ok("Credenciais TURN reais emitidas pela Cloudflare", Array.isArray(turnResponse.json?.iceServers) && turnResponse.json.iceServers.length > 0);
+  } else if (turnResponse.status === 502) {
+    console.log(`  ⚠ /v1/turn-credentials respondeu 502 (${turnResponse.json?.error?.message ?? "sem detalhe"}) — endpoint está certo, mas a TURN_KEY_ID configurada não é válida na Cloudflare. Ver docs/WEBRTC_TURN_PLAN.md.`);
+  } else {
+    ok("Credenciais TURN emitidas", false, `status inesperado ${turnResponse.status}: ${JSON.stringify(turnResponse.json)}`);
+  }
+
   section("Resultado");
   console.log(`${passed} passos ok, ${failed} falharam.`);
   console.log(

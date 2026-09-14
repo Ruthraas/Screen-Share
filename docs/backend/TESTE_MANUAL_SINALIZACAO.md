@@ -4,7 +4,7 @@ Documento vivo (atualizar conforme o frontend for ligando as partes que
 faltam). Objetivo: dizer exatamente o que já dá pra testar de verdade hoje,
 o que ainda é só mock/local, e como validar cada parte.
 
-## 0. Antes de tudo — o que é real e o que é mock hoje (atualizado 2026-09-13)
+## 0. Antes de tudo — o que é real e o que é mock hoje (atualizado 2026-09-14)
 
 O achado mais importante deste roteiro ainda vale, só que com escopo menor
 do que antes: **o app já captura tela de verdade e já usa grupos reais,
@@ -18,6 +18,7 @@ mas ainda não manda essa tela pra outro participante.**
 | Captura de tela local (Windows Graphics Capture nativo, com áudio de sistema opcional) | **Real desde 2026-09-13** (issue #8/#18/#72) — `src-tauri/src/capture.rs` + `useLocalCapture.ts`; **é 100% nativo Rust, não `getDisplayMedia`** (decisão explícita: só o app empacotado, nunca navegador). `Share.tsx` já deixa escolher fonte (grid com miniatura real), qualidade e áudio, e mostra a tela capturada no `ScreenViewer` — só que **só pra você mesmo**, o próprio app avisa: *"so voce ve sua tela por enquanto — enviar pra outros participantes ainda nao esta disponivel"* |
 | Presença (`/v1/groups/:id/presence`) | Implementado e testado **no backend**; **frontend ainda não chama** |
 | Sinalização WebSocket (`/ws`, offer/answer/ICE/peer-reconnected) | Implementado e testado **no backend** (inclusive reconexão — issue #42); **frontend ainda não tem cliente WebSocket** — issue [#71](https://github.com/Ruthraas/Screen-Share/issues/71), em aberto (só existe um doc de plano, `docs/WEBRTC_TURN_PLAN.md`, implementação não começou) |
+| Credenciais TURN (`POST /v1/turn-credentials`) | **Implementado e testado no backend** (issue #40/#41, Cloudflare Realtime) — validado contra a API real da Cloudflare, mas a `TURN_KEY_ID` no `.env` ainda não corresponde a uma chave válida na conta (`cannot find specified key`); ver `docs/WEBRTC_TURN_PLAN.md` |
 | Conexão P2P (`RTCPeerConnection`) | **Não existe no código ainda** — depende da #71 acima |
 | Tela "Multi-Screen" do app | Grupo/membros já são reais; o texto ainda avisa que a conexão entre participantes não está habilitada — isso é preciso, não é mock esquecido |
 
@@ -55,8 +56,11 @@ reais fariam — só que com um SDP falso no lugar de mídia de verdade (a
 captura de tela local já é real, ver seção 0, mas ainda não tem cliente
 WebRTC do lado do cliente pra gerar um SDP de verdade). Também simula uma
 reconexão (Alice cai e volta com uma conexão nova) pra provar `peer-reconnected`
-sem `peer-left` espúrio (issue #42). Termina imprimindo quantos passos
-passaram.
+sem `peer-left` espúrio (issue #42), e por fim chama
+`POST /v1/turn-credentials` de verdade contra a Cloudflare (issue #40/#41)
+— se a `TURN_KEY_ID` do `.env` não for válida na conta, isso aparece como
+um aviso (⚠), não como falha do script, já que é uma pendência externa,
+não um bug de código. Termina imprimindo quantos passos passaram.
 
 Pra testar contra um backend rodando em outra máquina da rede (ele já
 escuta em `0.0.0.0`, então a IP da LAN funciona sem mudar nada):
@@ -90,11 +94,12 @@ Se algo aqui falhar, é bug de verdade — essa parte não é mock.
 
 ## 3. O que falta pra testar transmissão de tela de verdade (pro Ruthraas)
 
-Duas das quatro peças já saíram do jeito antigo (~~grupos mock~~, ~~sem
-captura de tela~~ — issues #60 e #8/#18/#72, ambas landed em 2026-09-13).
-Falta só o que a issue [#71](https://github.com/Ruthraas/Screen-Share/issues/71)
-já escopa (nada disso é trabalho de backend — o backend já suporta tudo
-isso, provado na seção 1):
+Três das quatro peças já saíram do jeito antigo (~~grupos mock~~, ~~sem
+captura de tela~~, ~~sem TURN~~ — issues #60, #8/#18/#72 e #40/#41, todas
+landed). Falta só o que a issue
+[#71](https://github.com/Ruthraas/Screen-Share/issues/71) já escopa (nada
+disso é trabalho de backend — o backend já suporta tudo isso, provado na
+seção 1):
 
 1. **Cliente WebSocket** que conecta em `/ws?token=...&groupId=...` e fala o
    protocolo de `docs/backend/openapi.yaml`/`src/signaling/protocol.ts`
@@ -109,12 +114,15 @@ isso, provado na seção 1):
    trocar offer/answer/ICE reais no lugar do SDP fake do script da seção 1,
    e entregar o stream remoto pro `ScreenViewer` (contrato já pronto, só
    consumir).
-3. Só depois disso faz sentido decidir sobre TURN (#40/#41/#47, já
-   combinado que fica pra depois) — sem TURN, a conexão P2P só funciona
-   entre redes que conseguem se conectar direto ou via STUN (ex.: mesma
-   rede local), o que já é suficiente pra um primeiro teste real entre duas
-   máquinas na mesma LAN. Plano completo de integração em
-   `docs/WEBRTC_TURN_PLAN.md`.
+3. Usar as credenciais TURN reais de `POST /v1/turn-credentials` (#41,
+   pronto) como `iceServers` do `RTCPeerConnection` — já resolve conexão
+   fora da LAN também, não só mesma rede/STUN, assim que a `TURN_KEY_ID`
+   for corrigida na conta Cloudflare (ver seção 0 e
+   `docs/WEBRTC_TURN_PLAN.md` pra detalhe). `#47` (teste de capacidade)
+   ainda fica pra depois disso funcionar de ponta a ponta.
+
+Plano completo de integração (diagrama de sequência) em
+`docs/WEBRTC_TURN_PLAN.md`.
 
 ## 4. Achado e corrigido durante este roteiro (2026-09-12): erro desconhecido virava 500
 

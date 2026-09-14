@@ -52,8 +52,8 @@ jobs:
           SESSION_SIGNING_SECRET: ci-only-signing-secret-32-characters-min
           PASSWORD_PEPPER: ci-only-pepper-16-chars
           OAUTH_REDIRECT_BASE_URL: http://127.0.0.1:8787
-          TURN_HOST: turn.ci.invalid
-          TURN_SECRET: ci-only-not-a-real-secret
+          TURN_KEY_ID: ci-only-turn-key-id
+          TURN_KEY_API_TOKEN: ci-only-not-a-real-secret
         run: |
           npm run migrate
           Remove-Item -ErrorAction SilentlyContinue ./ci-migrate-check.db
