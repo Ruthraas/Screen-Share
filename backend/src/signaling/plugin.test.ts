@@ -19,6 +19,7 @@ import type { FastifyInstance } from "fastify";
 async function build(
   logger?: BuildServerOptions["logger"],
   signalingHeartbeatIntervalMs?: number,
+  rateLimits?: BuildServerOptions["rateLimits"],
 ): Promise<{ app: FastifyInstance; baseUrl: string }> {
   const app = buildServer({
     verifier: new FakeTokenVerifier(),
@@ -29,6 +30,7 @@ async function build(
     signalingPath: "/ws",
     ...(logger ? { logger } : {}),
     ...(signalingHeartbeatIntervalMs ? { signalingHeartbeatIntervalMs } : {}),
+    ...(rateLimits ? { rateLimits } : {}),
   });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
@@ -289,6 +291,34 @@ test("conexão que não responde ao ping do heartbeat é encerrada e os outros r
 
     wsOwner.terminate();
     wsMember.terminate();
+  } finally {
+    await app.close();
+  }
+});
+
+test("limite de tentativas de conexão por IP (issue #43): excede o máximo fecha com 4429", async () => {
+  const { app, baseUrl } = await build(undefined, undefined, {
+    windowMs: 60_000,
+    register: 5,
+    login: 10,
+    oauth: 20,
+    session: 30,
+    turn: 10,
+    wsConnect: 2,
+  });
+  try {
+    const group = await createGroupWithMember(app, "owner1", "member1");
+    const ws1 = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    await nextMessage(ws1); // joined — conta como 1ª tentativa permitida
+    const ws2 = new WebSocket(`${baseUrl}/ws?token=user:member1&groupId=${group.id}`);
+    await nextMessage(ws2); // joined — 2ª tentativa permitida (limite é 2)
+
+    const ws3 = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    const closeCode = await nextClose(ws3);
+    assert.equal(closeCode, 4429, "3ª tentativa de conexão na mesma janela deve ser bloqueada");
+
+    ws1.terminate();
+    ws2.terminate();
   } finally {
     await app.close();
   }

@@ -25,6 +25,40 @@ test("configuração válida: usa defaults e mantém os valores explícitos", ()
     desktop: "screenshare://oauth-callback",
   });
   assert.deepEqual(config.cors.allowedOrigins, ["http://127.0.0.1:5173", "https://tauri.localhost", "http://tauri.localhost"]);
+  assert.deepEqual(config.rateLimits, {
+    windowMs: 60_000,
+    register: 5,
+    login: 10,
+    oauth: 20,
+    session: 30,
+    turn: 10,
+    wsConnect: 20,
+  });
+  assert.equal(config.maxBodyBytes, 1_048_576);
+});
+
+test("limites de uso (issue #43) são configuráveis via env, sem mudar o default de quem não define nada", () => {
+  const config = loadConfig({
+    ...validEnv,
+    RATE_LIMIT_WINDOW_MS: "30000",
+    RATE_LIMIT_REGISTER_MAX: "1",
+    RATE_LIMIT_LOGIN_MAX: "2",
+    RATE_LIMIT_OAUTH_MAX: "3",
+    RATE_LIMIT_SESSION_MAX: "4",
+    RATE_LIMIT_TURN_MAX: "5",
+    RATE_LIMIT_WS_CONNECT_MAX: "6",
+    MAX_BODY_BYTES: "2048",
+  });
+  assert.deepEqual(config.rateLimits, {
+    windowMs: 30_000,
+    register: 1,
+    login: 2,
+    oauth: 3,
+    session: 4,
+    turn: 5,
+    wsConnect: 6,
+  });
+  assert.equal(config.maxBodyBytes, 2048);
 });
 
 test("OAUTH_FRONTEND_REDIRECT_URL_BROWSER/_DESKTOP customizadas substituem os defaults", () => {
