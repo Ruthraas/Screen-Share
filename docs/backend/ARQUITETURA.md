@@ -199,6 +199,50 @@ manifesto que a issue #48 (cliente, @Ruthraas) vai consumir depois.
   extra — "origem rastreável" sem reintroduzir dependência de rede
   desnecessária no próprio job que acabou de gerar os arquivos.
 
+**Adendo (issue #82, 2026-09-14): hospedagem em Fly.io com um Volume
+persistente anexado, decisão final do @ProgVictorPe entre quatro rotas
+avaliadas (registradas na própria issue).** Mesma lógica de custo/operação
+que já guiou SQLite-em-vez-de-Postgres-operado-à-parte e TURN
+gerenciado-em-vez-de-coturn: para um time de 2 pessoas, a opção que exige
+menos operação contínua e ainda tem chance real de ficar de graça vence,
+mesmo quando existe uma opção "mais correta arquiteturalmente" (Turso,
+banco sem estado) ou "mais barata pra sempre" (VM crua na Oracle Cloud,
+mas com TLS/processo/atualização manuais).
+
+- **Por que não Render/equivalente no plano grátis simples**: disco
+  efêmero — todo redeploy (e, em vários planos grátis, todo período de
+  inatividade) apaga o arquivo SQLite inteiro. Não é sobre carga, é sobre
+  persistência; nenhuma configuração de aplicação resolve isso, só trocar
+  de hospedagem ou de banco.
+- **Fly.io + Volume não exige nenhuma mudança de código**: mesmo
+  `better-sqlite3`, mesmo `HOST`/`PORT`/`DATABASE_PATH` já lidos do
+  ambiente (`src/config.ts`, issue #29) — só aponta `DATABASE_PATH` pra
+  dentro do Volume montado (`/data`, ver `backend/fly.toml`).
+  Migrações continuam rodando sozinhas no boot (`src/index.ts`), inclusive
+  em produção.
+  - **Exatamente UMA máquina, nunca escalada**: `min_machines_running = 1`
+    + `auto_stop_machines = "off"` em `fly.toml`. Dois motivos, não um:
+    suspender a máquina derrubaria toda conexão WebSocket de sinalização
+    aberta (ao contrário de uma API HTTP stateless, não dá pra só
+    "acordar no próximo request"); e `better-sqlite3` não foi desenhado
+    pra múltiplos processos escrevendo no mesmo arquivo ao mesmo tempo —
+    um Volume do Fly também só monta numa máquina por vez, então escalar
+    horizontalmente quebraria de qualquer forma.
+  - **Imagem Docker em `node:*-bookworm-slim` (Debian/glibc), não
+    Alpine**: `better-sqlite3` só publica prebuild pra glibc (issue #58,
+    já documentado em `backend/README.md`) — Alpine (musl) forçaria
+    compilar a dependência nativa do zero dentro do build, reintroduzindo
+    exatamente o problema que `backend/.npmrc` (`ignore-scripts=true`)
+    foi criado pra evitar.
+- **Se o limite gratuito do Fly não sustentar na prática**: próximo passo
+  registrado é migrar pra Turso (libSQL), não trocar de hospedagem de novo
+  — resolve o problema na raiz (backend vira sem estado) e libera
+  qualquer hospedagem simples depois, não só uma alternativa pontual. Não
+  fazer essa migração especulativamente agora — só se o Fly de fato não
+  servir, critério que só a operação real vai confirmar.
+- Passo a passo operacional (fora do escopo de decisão de arquitetura) em
+  `docs/backend/HOSPEDAGEM.md`.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |
