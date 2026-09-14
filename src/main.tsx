@@ -17,6 +17,7 @@ import "./styles.css";
 import { CommandPalette } from "./components/layout/CommandPalette";
 import { AccountProvider, useAccount, useSession } from "./components/layout/AccountProvider";
 import { RtcProvider } from "./components/rtc/RtcProvider";
+import { UpdateBanner } from "./components/update/UpdateBanner";
 import type { Route } from "./data/types";
 import { parseRouteHash, routeAfterLogin, routeForSignedOut, sessionView } from "./services/sessionRouting";
 
@@ -30,7 +31,10 @@ function App() {
   if (view === "loading") return <div className="app-frame"><SplashScreen leaving={false} /></div>;
   if (view === "login") return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
   if (!session.user) return <AuthenticatedApp signedIn={false} sessionError={session.error ?? undefined} />;
-  return <AccountProvider key={session.user.id} account={session.user}><RtcProvider><AuthenticatedApp signedIn /></RtcProvider></AccountProvider>;
+  // UpdateBanner fica fora do AppShell de propósito (issue #48: "não
+  // altere UI fora do componente de atualização") — um componente
+  // próprio, sobreposto, em vez de mexer no layout de cada página.
+  return <AccountProvider key={session.user.id} account={session.user}><RtcProvider><AuthenticatedApp signedIn /><UpdateBanner /></RtcProvider></AccountProvider>;
 }
 
 function AuthenticatedApp({ signedIn, sessionError }: { signedIn: boolean; sessionError?: string }) {
