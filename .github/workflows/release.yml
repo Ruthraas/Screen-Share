@@ -68,6 +68,12 @@ jobs:
           generateReleaseNotes: true
           uploadUpdaterJson: true
           uploadPlainBinary: true
+          # createUpdaterArtifacts fica só aqui, não em tauri.conf.json: se
+          # estivesse na config base, QUALQUER `tauri build` (inclusive o
+          # do frontend-ci.yml, sem TAURI_SIGNING_PRIVATE_KEY) passaria a
+          # exigir a chave privada e quebraria — achado real, primeira
+          # tentativa deste workflow (ver histórico do PR #49).
+          args: "--config {\"bundle\":{\"createUpdaterArtifacts\":true}}"
 
       - name: Gerar e anexar checksums (SHA256) dos artefatos
         env:
