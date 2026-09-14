@@ -98,6 +98,34 @@ nem montar URL por conta própria. Endpoint/formato confirmados na doc
 oficial da Cloudflare em 2026-09-14. Detalhe do contrato completo e do
 diagrama de sequência em `docs/WEBRTC_TURN_PLAN.md`.
 
+**Adendo (issue #43/#44, 2026-09-14): limites configuráveis + métricas em
+memória, sem serviço externo.** Duas decisões pequenas registradas juntas
+por serem a mesma etapa:
+
+- **Rate limit**: as rotas HTTP já usavam `@fastify/rate-limit` com valores
+  fixos (issue #43 original). Viraram configuráveis via env
+  (`RATE_LIMIT_*`, uma janela só compartilhada — variar isso por rota
+  também multiplicaria combinações sem ganho real pra 2 pessoas). Conexão
+  WebSocket (`/ws`) ganhou limite próprio (`src/signaling/connectRateLimiter.ts`,
+  janela deslizante em memória) em vez de tentar encaixar
+  `@fastify/rate-limit` no upgrade de protocolo do `@fastify/websocket` —
+  não é uma interação documentada/testada pelos dois plugins juntos, e um
+  limitador de ~20 linhas, testável isolado, resolve sem essa incerteza.
+- **Métricas**: `src/observability/metrics.ts`, contadores/gauges em
+  memória (mesma escolha já feita pra `SignalingRooms`/`PresenceStore` —
+  perde estado no restart, aceitável pro tamanho do produto), expostos em
+  `GET /metrics` (JSON simples, não Prometheus/OpenMetrics — sem scraper
+  configurado ainda, adotar esse formato agora seria decisão sem uso).
+  Público como `/health`/`/ready` (só números operacionais, nunca dado de
+  usuário) — por isso, como aqueles dois, `/metrics` também fica **fora**
+  do `openapi.yaml` (convenção já estabelecida: endpoints operacionais não
+  entram no contrato de negócio).
+- **Achado no caminho**: uma rota genuinely inexistente (`404` de
+  roteamento, não `NotFoundError` de domínio) respondia com o shape
+  padrão do Fastify (`{message, error, statusCode}`), não o envelope único
+  do contrato (#27), e nunca era contada nas métricas — `app.setNotFoundHandler`
+  corrige os dois.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |
@@ -111,7 +139,8 @@ diagrama de sequência em `docs/WEBRTC_TURN_PLAN.md`.
 | `turn` | Integração com Cloudflare Realtime TURN (serviço gerenciado), emissão de credenciais de curta duração | #40, #41 |
 | `signaling-protocol` | Contratos versionados de evento (join/leave/offer/answer/ice/…) | #38 |
 | `config` | Configuração validada por ambiente, segredos fora do Git | #29 |
-| `observability` | Logs estruturados, métricas, health/readiness | #44 |
+| `observability` | Logs estruturados, métricas em memória (`/metrics`), health/readiness | #44 |
+| — (transversal) | Limites de uso/anti-abuso: rate limit HTTP configurável, limite de conexão WS, corpo máximo | #43 |
 
 Nenhum desses módulos está implementado ainda — esta issue (#27) entrega só
 a documentação e o contrato (`openapi.yaml`); a implementação é rastreada
