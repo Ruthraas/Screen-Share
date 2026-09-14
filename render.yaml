@@ -1,0 +1,74 @@
+# Blueprint do Render pro backend (issue #82, decisão final registrada em
+# docs/backend/ARQUITETURA.md). Backend sem estado desde a migração pra
+# Turso/libSQL — sem disco persistente, sem Docker (não há mais nenhuma
+# dependência nativa desde que better-sqlite3 saiu): runtime Node puro do
+# Render já resolve.
+#
+# Uso: no dashboard do Render, "New +" -> "Blueprint", conectar este repo —
+# o Render lê este arquivo automaticamente por estar na raiz do repositório
+# (`rootDir` abaixo aponta o serviço em si pra dentro de backend/, sem mudar
+# onde o render.yaml precisa morar). O Render cria o serviço e pede, um a
+# um, o valor de cada envVar com `sync: false` abaixo — nenhum segredo fica
+# neste arquivo, que é commitado no Git. Campo opcional sem valor pra sua
+# configuração (ex. um provedor OAuth que você não usa) pode ficar em
+# branco no assistente e ser preenchido depois na aba Environment.
+services:
+  - type: web
+    name: screenshare-backend
+    runtime: node
+    plan: free
+    region: virginia # mesma região do banco Turso (aws-us-east-1) — minimiza a latência backend<->banco
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # PORT é injetado automaticamente pelo Render — não declarar aqui.
+      - key: HOST
+        value: 0.0.0.0
+      - key: SIGNALING_PATH
+        value: /ws
+      # Banco (issue #82) — TURSO_DATABASE_URL presente faz buildDatabaseConfig
+      # (src/config.ts) ignorar DATABASE_PATH automaticamente.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      # Segredos de autenticação própria (issue #29/#30) — únicos por ambiente,
+      # nunca reaproveitar o valor de desenvolvimento local em produção.
+      - key: SESSION_SIGNING_SECRET
+        sync: false
+      - key: PASSWORD_PEPPER
+        sync: false
+      # Preenchido só depois do primeiro deploy, quando a URL pública existir
+      # (ver docs/backend/HOSPEDAGEM.md) — ex.: https://screenshare-backend.onrender.com
+      - key: OAUTH_REDIRECT_BASE_URL
+        sync: false
+      - key: OAUTH_FRONTEND_REDIRECT_URL_BROWSER
+        sync: false
+      - key: OAUTH_FRONTEND_REDIRECT_URL_DESKTOP
+        sync: false
+      # TURN (Cloudflare Realtime, issue #40/#41).
+      - key: TURN_KEY_ID
+        sync: false
+      - key: TURN_KEY_API_TOKEN
+        sync: false
+      # CORS — default do config.ts já cobre o cliente empacotado
+      # (tauri.localhost) e o dev server do Vite; só sobrescrever se precisar
+      # de uma origem adicional em produção.
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # Credenciais OAuth por provedor — opcionais, cada uma só ativa o
+      # provedor correspondente quando client id E secret estão presentes.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false

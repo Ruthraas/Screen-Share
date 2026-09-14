@@ -1,107 +1,85 @@
 # Como hospedar o backend em produção (issue #82)
 
-Decisão registrada em `docs/backend/ARQUITETURA.md`: **Fly.io + um Volume
-persistente**. Este documento é o passo a passo prático — a parte de criar
-conta e autenticar só você consegue fazer (o Claude não cria contas em
-serviço nenhum).
+Decisão registrada em `docs/backend/ARQUITETURA.md`: **Render, serviço Node
+nativo (sem Docker), Blueprint via `render.yaml`** na raiz do repositório.
+Isso só é possível porque o backend virou sem estado na migração pro Turso —
+sem disco a persistir, qualquer hospedagem simples de processo serve. Este
+documento é o passo a passo prático — a parte de criar conta e autorizar o
+GitHub só você consegue fazer (o Claude não cria contas em serviço nenhum).
 
 ## 0. Antes de começar
 
-Você vai precisar, à mão, dos valores que já estão no seu
-`backend/.env` local: `GOOGLE_CLIENT_ID`/`SECRET`, `GITHUB_CLIENT_ID`/`SECRET`,
-`DISCORD_CLIENT_ID`/`SECRET` (os que já configurou), `TURN_KEY_ID`,
-`TURN_KEY_API_TOKEN`. **Não me cole esses valores no chat** — copie direto
-do arquivo pros comandos abaixo.
+Tenha à mão os valores que já estão no seu `backend/.env` local:
+`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `TURN_KEY_ID`,
+`TURN_KEY_API_TOKEN`, e os `*_CLIENT_ID`/`*_CLIENT_SECRET` dos provedores
+OAuth que já configurou. **Não cole esses valores no chat** — copie direto
+do arquivo pro formulário do Render.
 
-`SESSION_SIGNING_SECRET` e `PASSWORD_PEPPER` de produção devem ser
-**novos**, diferentes dos que você usa local — os comandos abaixo já geram
-valores aleatórios na hora, sem precisar digitar nada.
-
-## 1. Instalar e autenticar o flyctl
+`SESSION_SIGNING_SECRET` e `PASSWORD_PEPPER` de produção devem ser **novos**,
+diferentes dos que você usa local. Gere cada um assim (PowerShell) antes de
+ir pro passo 2:
 
 ```powershell
-iwr https://fly.io/install.ps1 -useb | iex
-fly auth login
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"
 ```
 
-Isso abre o navegador pra criar conta/logar (grátis, não pede cartão pra
-só usar o Always Free / faixa gratuita de compute).
+## 1. Criar conta e conectar o repositório
 
-## 2. Criar o app e o volume
+1. Entre em [render.com](https://render.com), crie a conta (dá pra usar
+   login do GitHub direto, simplifica o passo seguinte).
+2. **New +** → **Blueprint**.
+3. Autorize o Render a acessar o repositório `Ruthraas/Screen-Share` (só
+   este repo, não a conta inteira, se o GitHub oferecer essa opção).
+4. O Render encontra `render.yaml` sozinho (está na raiz do repo) e mostra
+   o serviço `screenshare-backend` que ele vai criar, com a lista de
+   variáveis de ambiente pedindo valor (todas as que têm `sync: false` no
+   arquivo).
 
-Rodar de dentro de `backend/` (onde já estão `fly.toml` e `Dockerfile`,
-commitados neste PR):
+## 2. Preencher as variáveis de ambiente
 
-```powershell
-cd backend
-fly apps create screenshare-backend
-```
+Preencha com os valores do seu `.env` local:
 
-Se o nome já estiver em uso, o comando avisa — escolha outro (ex.
-`screenshare-backend-<algo>`) e **atualize a linha `app = "..."` em
-`fly.toml`** pra bater com o nome real antes de continuar.
+| Variável | Origem |
+|---|---|
+| `TURSO_DATABASE_URL` | `.env` local |
+| `TURSO_AUTH_TOKEN` | `.env` local |
+| `SESSION_SIGNING_SECRET` | **novo**, gerado no passo 0 |
+| `PASSWORD_PEPPER` | **novo**, gerado no passo 0 |
+| `TURN_KEY_ID` | `.env` local |
+| `TURN_KEY_API_TOKEN` | `.env` local |
+| `GOOGLE_CLIENT_ID`/`SECRET`, `GITHUB_CLIENT_ID`/`SECRET`, `DISCORD_CLIENT_ID`/`SECRET` | `.env` local — só os provedores que você já configurou; deixe os outros em branco |
+| `CORS_ALLOWED_ORIGINS`, `OAUTH_FRONTEND_REDIRECT_URL_BROWSER`, `OAUTH_FRONTEND_REDIRECT_URL_DESKTOP` | deixe em branco por enquanto — `src/config.ts` já tem default seguro pro cliente empacotado |
 
-```powershell
-fly volumes create screenshare_data --region gru --size 1
-```
+**`OAUTH_REDIRECT_BASE_URL` ainda não dá pra preencher** — depende da URL
+que o Render só mostra depois de criar o serviço (formato
+`https://screenshare-backend.onrender.com`, ou um sufixo diferente se o
+nome já estiver em uso). Deixe em branco por ora, você volta no passo 4.
 
-`--region` precisa bater com `primary_region` do `fly.toml` (`gru` =
-São Paulo; troque os dois juntos se preferir outra região). `--size 1` é
-1 GB — sobra bastante pra um SQLite de grupos privados pequenos; dá pra
-aumentar depois sem downtime (`fly volumes extend`).
+Clique em **Deploy Blueprint**.
 
-## 3. Configurar os secrets
+## 3. Primeiro deploy
 
-Rodando de dentro de `backend/`. Primeiro gere os dois valores novos (cada
-um numa variável, evita problema de aspas aninhadas no comando seguinte):
+O Render builda (`npm ci && npm run build`) e sobe (`npm start`) sozinho.
+As migrações rodam automaticamente no boot (`src/index.ts`, mesmo
+comportamento do `npm start` local) — não precisa de passo manual.
 
-```powershell
-$sessionSecret = node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-$passwordPepper = node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"
-```
+Acompanhe o log de build/deploy no dashboard. Ao terminar, o Render mostra
+a URL pública do serviço no topo da página (ex.:
+`https://screenshare-backend.onrender.com`).
 
-Depois, um comando só. Troque cada `<...>` pelo valor real (copiado do seu
-`.env` local):
+## 4. Completar `OAUTH_REDIRECT_BASE_URL` com a URL real
 
-```powershell
-fly secrets set `
-  SESSION_SIGNING_SECRET=$sessionSecret `
-  PASSWORD_PEPPER=$passwordPepper `
-  OAUTH_REDIRECT_BASE_URL=https://screenshare-backend.fly.dev `
-  GOOGLE_CLIENT_ID=<do seu .env> `
-  GOOGLE_CLIENT_SECRET=<do seu .env> `
-  GITHUB_CLIENT_ID=<do seu .env> `
-  GITHUB_CLIENT_SECRET=<do seu .env> `
-  DISCORD_CLIENT_ID=<do seu .env> `
-  DISCORD_CLIENT_SECRET=<do seu .env> `
-  TURN_KEY_ID=<do seu .env> `
-  TURN_KEY_API_TOKEN=<do seu .env>
-```
-
-Ajuste `OAUTH_REDIRECT_BASE_URL` pro domínio real se o nome do app não
-foi `screenshare-backend` (passo 2). Só inclua os três pares
-`*_CLIENT_ID`/`*_CLIENT_SECRET` dos provedores que você já configurou de
-verdade — provedor sem credencial responde erro claro no `/start` dele,
-não trava o boot (comportamento já existente, não muda em produção).
-
-`HOST`, `PORT`, `DATABASE_PATH`, `SIGNALING_PATH` **não** entram aqui — já
-estão em `fly.toml` (`[env]`), não são segredo.
-
-## 4. Deploy
-
-```powershell
-fly deploy
-```
-
-Builda a imagem (`Dockerfile`), sobe, monta o volume em `/data`, roda as
-migrações automaticamente no boot (mesmo comportamento do `npm start`
-local, ver `backend/README.md`).
+Na aba **Environment** do serviço, edite `OAUTH_REDIRECT_BASE_URL` pra URL
+que o Render te deu no passo 3 (sem barra no final). Salvar dispara um
+redeploy automático — normal, é rápido (sem build, só reinicia o processo
+com a env nova).
 
 ## 5. Validar (critérios de aceite da issue #82)
 
 ```powershell
-curl https://screenshare-backend.fly.dev/health
-curl https://screenshare-backend.fly.dev/ready
+curl https://screenshare-backend.onrender.com/health
+curl https://screenshare-backend.onrender.com/ready
 ```
 
 Os dois devem responder `200`. Depois:
@@ -109,29 +87,29 @@ Os dois devem responder `200`. Depois:
 1. Cadastre uma conta e crie um grupo de teste contra o domínio real
    (Postman, `curl`, ou o próprio app apontando `VITE_API_URL` pra cá —
    combine com o @Ruthraas quando for testar pelo app de verdade).
-2. **Force um restart** (`fly machine restart <id>`, id via `fly status`)
-   ou um redeploy (`fly deploy` de novo, sem mudar nada) e confirme que a
-   conta/grupo **continuam lá** — é a validação obrigatória da issue:
-   persistência de verdade, não só "o deploy funcionou".
+2. **Force um redeploy manual** (aba do serviço → "Manual Deploy" → "Deploy
+   latest commit") e confirme que a conta/grupo **continuam lá** — é a
+   validação obrigatória da issue: persistência de verdade (agora no
+   Turso, não no processo do Render), não só "o deploy funcionou".
 3. Teste login OAuth de verdade contra o domínio novo (não localhost) —
    ver passo 6 primeiro, senão o provedor rejeita o redirect.
 
 ## 6. Atualizar o redirect URI em cada provedor OAuth configurado
 
 **Sem isso, login OAuth quebra em produção mesmo com o backend no ar** —
-cada provedor só aceita voltar pra uma URL exatamente cadastrada na
-console dele. Pra cada provedor que você configurou (Google/GitHub/
-Discord), adicione (sem remover o de desenvolvimento, que continua
-funcionando pra rodar local):
+cada provedor só aceita voltar pra uma URL exatamente cadastrada na console
+dele. Pra cada provedor que você configurou (Google/GitHub/Discord),
+adicione (sem remover o de desenvolvimento, que continua funcionando pra
+rodar local):
 
 ```
-https://screenshare-backend.fly.dev/v1/auth/oauth/google/callback
-https://screenshare-backend.fly.dev/v1/auth/oauth/github/callback
-https://screenshare-backend.fly.dev/v1/auth/oauth/discord/callback
+https://screenshare-backend.onrender.com/v1/auth/oauth/google/callback
+https://screenshare-backend.onrender.com/v1/auth/oauth/github/callback
+https://screenshare-backend.onrender.com/v1/auth/oauth/discord/callback
 ```
 
-(troque `screenshare-backend.fly.dev` pelo domínio real se for diferente;
-adicione só os provedores que você realmente usa).
+(troque `screenshare-backend.onrender.com` pelo domínio real se for
+diferente; adicione só os provedores que você realmente usa).
 
 ## 7. Depois do backend no ar
 
@@ -139,13 +117,16 @@ adicione só os provedores que você realmente usa).
   real — fora do escopo desta issue, é o lado dele.
 - Isso desbloqueia o primeiro release real (`v1.0.0`) de verdade — ver
   `docs/backend/RELEASES.md`.
-- **Nunca rode `fly scale count` acima de 1** nesta app — SQLite não
-  aguenta duas máquinas escrevendo no mesmo arquivo ao mesmo tempo, e o
-  volume é preso a uma única máquina de qualquer forma.
 
-## Se os limites gratuitos não servirem na prática
+## Uma limitação real do plano grátis do Render (leia antes de confiar 100%)
 
-Ver a opção 3 (migrar pra Turso/libSQL) registrada em
-`docs/backend/ARQUITETURA.md` — é o próximo passo natural, não gambiarra:
-tira a dependência de disco anexado e libera qualquer hospedagem grátis
-simples, não só Fly.
+O plano `free` **suspende o serviço depois de ~15 minutos sem nenhuma
+requisição** — a próxima requisição recebe um "cold start" de dezenas de
+segundos até o processo voltar. Isso não afeta uma sessão de
+compartilhamento de tela já em andamento (o WebSocket de sinalização, uma
+vez conectado, mantém o serviço ativo), só o primeiro acesso depois de um
+período ocioso — o usuário pode notar demora ao tentar entrar num grupo
+depois de o serviço ter "dormido". Aceitável pro tamanho atual do produto
+(grupo de amigos, não uso constante 24/7); se isso incomodar na prática, a
+correção é upgrade de plano (`starter` em diante, sem suspensão), não
+trocar de hospedagem de novo.

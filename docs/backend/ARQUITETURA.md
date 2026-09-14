@@ -283,13 +283,49 @@ removidos do `package.json` — nenhum uso restante em `src/`.
   conversão síncrono→assíncrono neste repo: auditar manualmente toda
   negação booleana (`!chamada(...)`) de uma função que passou a devolver
   Promise, não confiar só no compilador.
-- **Ainda pendente**: nenhum banco Turso real foi criado ainda — as
-  credenciais de produção (`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`) faltam
-  em `backend/.env`. A suíte de testes (170 casos) roda inteira contra
-  libSQL local em memória, sem rede, então não depende disso. Passo a
-  passo operacional (criação do banco, migração de dados se houver,
-  variáveis de ambiente em produção) fica em `docs/backend/HOSPEDAGEM.md`
-  quando esse passo acontecer.
+- **Validado contra o serviço real, não só `:memory:`**: banco de
+  desenvolvimento criado no Turso (`screenshare-dev`, região AWS
+  `us-east-1`/Virginia — a mais próxima do `gru` do Fly entre as
+  disponíveis no free tier na época). Migrações aplicadas, `/ready`
+  confirma leitura/escrita, e um fluxo real (registro → login → criar
+  grupo → checar role → excluir grupo) rodou ponta a ponta contra o banco
+  remoto. A suíte de testes (170 casos) continua rodando inteira contra
+  libSQL local em memória, sem rede — não depende de nenhuma credencial
+  real pra passar.
+
+**Adendo (issue #82, 2026-09-14): hospedagem final é Render (serviço Node
+nativo, `render.yaml`), não Fly.io — decisão trocada no mesmo dia em que
+foi registrada, decisão de produto do Ruthraas.** O adendo original
+escolheu Fly.io porque, na época, o backend ainda dependia de disco local
+(SQLite) — Render foi descartado explicitamente por causa disso ("disco
+efêmero apaga o SQLite"). Essa restrição não existe mais depois da
+migração pro Turso: o backend não tem mais nenhum estado em disco, então a
+única razão registrada pra descartar Render deixou de valer, e o Ruthraas
+optou por Render nessa janela sem restrição técnica que apontasse pra um
+dos dois.
+
+- **`backend/fly.toml`, `backend/Dockerfile` e `backend/.dockerignore`
+  removidos** — específicos do Fly (Volume, imagem Debian/glibc por causa
+  do `better-sqlite3`, que também já saiu). `render.yaml` (raiz do repo,
+  não dentro de `backend/` — é onde o Render espera encontrar um Blueprint
+  por padrão; `rootDir: backend` dentro dele aponta o build/start pra a
+  pasta certa) substitui os dois: `runtime: node` puro, **sem Docker** —
+  não há mais nenhuma dependência nativa no backend que justifique
+  controlar a imagem base.
+- **Sem Volume, sem `min_machines_running`**: o estado mora inteiro no
+  Turso agora, então não existe mais o risco de duas máquinas escrevendo
+  no mesmo arquivo, nem a necessidade de manter exatamente um processo
+  fixo por causa de um disco preso a uma máquina só. Simplifica a config
+  de hospedagem por si só, independente da escolha entre Render/Fly.
+- **Trade-off real e aceito, não ignorado**: o plano grátis do Render
+  suspende o processo depois de ~15 min sem requisição (cold start de
+  dezenas de segundos no próximo acesso). Não afeta uma sessão de
+  compartilhamento já conectada (o WebSocket mantém o processo ativo), só
+  o primeiro acesso depois de ficar ocioso — aceitável pro tamanho atual
+  do produto (grupo de amigos). Reavaliar (upgrade de plano, não nova
+  troca de hospedagem) só se isso incomodar na prática.
+- Passo a passo operacional em `docs/backend/HOSPEDAGEM.md` (reescrito
+  pra Render nesta mesma data).
 
 ## 3. Módulos e limites
 
