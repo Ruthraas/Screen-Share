@@ -618,6 +618,35 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     tolerância documentada (50% relativa ou piso de 20ms) nas duas
     execuções. Também testado até 500 conexões simultâneas durante a
     investigação do achado do WAL, sem falhas.
+- **#49 — Automatizar releases e manifesto do updater Tauri (2026-09-14)**:
+  dependências #5/#22 (frontend) já fechadas; decisão completa em
+  `docs/backend/ARQUITETURA.md`, passo a passo em
+  `docs/backend/RELEASES.md`.
+  - Novo `.github/workflows/release.yml`: dispara em tag `vX.Y.Z`,
+    interrompe se a versão da tag divergir de `package.json`/
+    `src-tauri/Cargo.toml`/`src-tauri/tauri.conf.json`
+    (`scripts/verificar-versao-release.mjs`), builda e assina via
+    `tauri-apps/tauri-action` (oficial, fixada por SHA), gera
+    `checksums.txt` (`scripts/gerar-checksums-release.mjs`), e só publica
+    a release (sai de rascunho) se todo o job passou.
+  - Chave de assinatura de update (Ed25519/minisign, `tauri signer
+    generate`) gerada nesta etapa — pública em `tauri.conf.json`
+    (`plugins.updater.pubkey`), privada entregue fora do Git direto pro
+    usuário configurar como secret (`TAURI_SIGNING_PRIVATE_KEY` +
+    `_PASSWORD`); **não** é certificado Authenticode de code-signing do
+    Windows (fora de escopo desta issue).
+  - Manifesto do updater publicado em
+    `https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json`
+    — é o que a issue #48 (frontend, @Ruthraas) vai consumir.
+  - **Não testado ponta a ponta ainda**: só empurrando uma tag real é
+    possível validar o workflow de verdade (cria uma release pública de
+    verdade) — decisão de quando fica com quem decide o número da
+    próxima versão, não é algo pra disparar sem alinhar antes. Testado
+    localmente: `verificar-versao-release.mjs` com versão batendo e
+    divergindo (ambos os casos corretos); geração de config do updater
+    conferida contra a documentação oficial do Tauri antes de escrever
+    (sem ambiente Rust local nesta máquina pra rodar `cargo check`/`tauri
+    build` — validação real acontece na primeira tag empurrada, via CI).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -692,6 +721,7 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
 - **Presença — implementada** (`src/routes/presence.ts`, testada): `POST /v1/groups/{id}/presence/heartbeat`, `GET /v1/groups/{id}/presence`.
 - **WebSocket** (`/ws?token=...&groupId=...`): cliente troca `offer`/`answer`/`ice-candidate`/`stream-started`/`stream-stopped` por um protocolo versionado com `correlationId` (#38, implementado e testado) — o front precisa implementar o cliente WS e o `RTCPeerConnection` consumindo esse protocolo (não é escopo do backend). **Reconexão (#42, 2026-09-13)**: se a mesma conta abrir uma nova conexão pro mesmo grupo sem a antiga ter caído ainda (queda de rede curta), os outros participantes recebem `peer-reconnected` no lugar de um `peer-joined` repetido — é o sinal pra tentar ICE restart com esse peer em vez de tratar como entrada do zero; a conexão antiga sendo substituída nunca gera um `peer-left` falso (ela é fechada pelo servidor com código `4409`). Conexão sem `close` limpo (queda sem aviso — cabo, notebook suspenso) é detectada por heartbeat ping/pong a cada 15s e limpa em até ~30s, disparando `peer-left` de verdade nesse prazo em vez de depender do timeout do TCP (que pode levar minutos).
 - **TURN — implementado e validado com credenciais reais** (2026-09-14, via Cloudflare Realtime — ver `docs/backend/ARQUITETURA.md`): `POST /v1/turn-credentials` (autenticado) devolve `{ iceServers, ttlSeconds }` já no formato exato de `RTCConfiguration.iceServers` (`docs/WEBRTC_TURN_PLAN.md` tem o contrato completo pra #71) — nenhuma dependência de backend restante pra #71 fechar. Cliente nunca deve usar segredo estático, sempre pedir credencial nova antes de abrir conexão.
+- **Release/updater — pipeline pronto pra #48 consumir (2026-09-14, #49)**: manifesto do updater em `https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json` (formato padrão do plugin oficial do Tauri — `version`, `notes`, `pub_date`, `platforms["windows-x86_64"].{signature,url}`), publicado automaticamente a cada tag `vX.Y.Z` empurrada (ver `docs/backend/RELEASES.md`). A chave pública de verificação já está em `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) — falta só a #48 adicionar o crate `tauri-plugin-updater` (Cargo + npm) e a UI de aviso/instalação; a config do endpoint em `tauri.conf.json` (`plugins.updater.endpoints`) já aponta pro manifesto certo, não precisa mudar. **Ainda não existe nenhuma release real publicada** — a primeira tag é quem valida o pipeline ponta a ponta, isso é combinado entre os dois antes de empurrar.
 - **Updater**: `#48` (frontend, exibir/instalar atualização) consome o manifesto gerado por `#49` (backend/infra) — URLs HTTPS da própria release, arquitetura x64.
 - **Dependência inversa**: `#49` (backend) só fecha depois que o frontend entregar `#5` (build/smoke test Windows) e `#22` (ícones/identidade do bundle).
 - **Dependência inversa**: `#10` (integração) só fecha depois que o frontend entregar `#20` (troca entre transmissões no cliente).

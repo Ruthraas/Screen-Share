@@ -1,0 +1,87 @@
+name: Release
+
+# Issue #49: publica executável + instalador NSIS + manifesto do updater
+# Tauri (latest.json) a cada tag `vX.Y.Z` (canal estável). O filtro de tag
+# do GitHub Actions só suporta glob (*, **, ?, +, !), não classes tipo
+# [0-9] — "v*.*.*" também casa com algo como "v1.0.0-beta", mas o passo
+# de verificação de versão (abaixo) exige igualdade exata com
+# package.json/Cargo.toml/tauri.conf.json, então uma tag fora do semver
+# esperado só faz o job falhar cedo, nunca publica nada. Build/testes de
+# PR já são cobertos pelo frontend-ci.yml a cada mudança em src-tauri/**;
+# este workflow foca no que é específico de release: versão consistente
+# entre tag/package.json/Cargo.toml/tauri.conf.json, assinatura dos
+# artefatos de update (a chave pública já está em src-tauri/tauri.conf.json
+# — a privada fica só nos secrets TAURI_SIGNING_PRIVATE_KEY/_PASSWORD,
+# nunca no repositório),
+# checksum SHA256, e nunca marcar uma release como estável se qualquer
+# etapa falhar no meio do caminho (fica em rascunho até o job inteiro
+# passar — "Release incompleta não é marcada como estável").
+#
+# Issue #48 (frontend, @Ruthraas) consome o manifesto publicado aqui:
+# https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar consistência de versão (tag, package.json, Cargo.toml, tauri.conf.json)
+        run: node scripts/verificar-versao-release.mjs "${{ github.ref_name }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Testes Rust da ponte desktop (sanidade antes de publicar)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build, assinar artefatos de update e criar release (rascunho)
+        id: tauri-release
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "ScreenShare ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: true
+          uploadPlainBinary: true
+          # createUpdaterArtifacts fica só aqui, não em tauri.conf.json: se
+          # estivesse na config base, QUALQUER `tauri build` (inclusive o
+          # do frontend-ci.yml, sem TAURI_SIGNING_PRIVATE_KEY) passaria a
+          # exigir a chave privada e quebraria — achado real, primeira
+          # tentativa deste workflow (ver histórico do PR #49).
+          args: "--config {\"bundle\":{\"createUpdaterArtifacts\":true}}"
+
+      - name: Gerar e anexar checksums (SHA256) dos artefatos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/gerar-checksums-release.mjs "${{ github.ref_name }}"
+
+      - name: Publicar release (sair de rascunho — só chega aqui se tudo acima passou)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"

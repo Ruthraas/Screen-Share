@@ -146,6 +146,59 @@ linear. Isso não é específico do teste sintético — vale pra qualquer
 sequência de escritas reais do produto (cadastro, importação em lote
 etc.), então é uma correção de produção, não só do ambiente de teste.
 
+**Adendo (issue #49, 2026-09-14): release automatizada via `tauri-apps/tauri-action`
+(oficial, fixada por SHA de commit), assinatura de update com chave Ed25519
+gerada localmente (`tauri signer generate`), nunca no repositório.**
+Decisão de infraestrutura, não muda nada do frontend/cliente em si — a
+issue explicitamente proíbe alterar comportamento do app (`não habilitar
+atualização automática sem ação do usuário`); só o pipeline de build e o
+manifesto que a issue #48 (cliente, @Ruthraas) vai consumir depois.
+
+- **`tauri-apps/tauri-action`** em vez de reimplementar build+empacotamento
+  Windows+assinatura+criação de release à mão: é a action oficial do
+  próprio projeto Tauri, cobre exatamente esse fluxo, e a "Regra para IA"
+  da própria issue pede ação oficial fixada por versão — fixada pelo SHA
+  do commit (`action-v1.0.0`), não só a tag, pela mesma razão de qualquer
+  pin de dependência de terceiro (tag pode ser recriada apontando pra
+  outro commit; SHA não).
+- **Assinatura de update é uma chave Ed25519 separada** (formato
+  minisign, via `tauri signer generate`) — **não** é um certificado
+  Authenticode de code-signing do Windows (isso é um problema/custo
+  diferente, não coberto por esta issue; sem ele o instalador continua
+  mostrando aviso do SmartScreen, mas isso não impede o updater de
+  funcionar). A chave pública mora em `tauri.conf.json`
+  (`plugins.updater.pubkey`, seguro de commitar — só serve pra verificar,
+  não pra assinar); a privada foi gerada nesta etapa e entregue fora do
+  Git (não em texto de PR/commit) — detalhe operacional em
+  `docs/backend/RELEASES.md`.
+- **`createUpdaterArtifacts: true`** (não a instalação do crate
+  `tauri-plugin-updater`) é o que faz o `tauri build` assinar os
+  artefatos — mecanismo do bundler/CLI, independente de o app ter o
+  plugin de update instalado/inicializado (isso é trabalho da #48,
+  cliente). Confirmado na documentação oficial do Tauri antes de
+  configurar, pra não arriscar um manifesto mal formado. **Fica só no
+  `release.yml`** (mesclado via `tauri build --config
+  '{"bundle":{"createUpdaterArtifacts":true}}'`), não em
+  `tauri.conf.json` — achado real na primeira tentativa: colocar isso na
+  config base faz *qualquer* `tauri build` (inclusive o do
+  `frontend-ci.yml`, que roda sem `TAURI_SIGNING_PRIVATE_KEY`) exigir a
+  chave privada e falhar. `plugins.updater.pubkey`/`endpoints` continuam
+  em `tauri.conf.json` normalmente — só são dados de configuração, não
+  disparam a exigência de assinatura sozinhos.
+- **Verificação de versão própria** (`scripts/verificar-versao-release.mjs`)
+  em vez de confiar só na tag: a issue exige que tag, `package.json`,
+  `Cargo.toml` e `tauri.conf.json` batam exatamente, e que uma divergência
+  interrompa o workflow antes de publicar qualquer coisa.
+- **Release sempre nasce como rascunho**, só vira pública
+  (`gh release edit --draft=false`) no último passo do job, condicionado
+  a todos os passos anteriores terem passado — garante que uma falha no
+  meio do caminho nunca deixa uma release "meio pronta" visível como
+  estável.
+- **Checksums SHA256** gerados a partir dos arquivos já construídos
+  localmente (não baixados de volta do GitHub) e anexados como asset
+  extra — "origem rastreável" sem reintroduzir dependência de rede
+  desnecessária no próprio job que acabou de gerar os arquivos.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |
