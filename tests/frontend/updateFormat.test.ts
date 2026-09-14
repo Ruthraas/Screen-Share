@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { summarizeDownloadProgress, summarizeReleaseNotes } from "../../src/components/update/updateFormat.ts";
+import { shouldPlayUpdateFoundSound, summarizeDownloadProgress, summarizeReleaseNotes } from "../../src/components/update/updateFormat.ts";
 
 test("summarizeDownloadProgress: sem total conhecido, so mostra quanto baixou", () => {
   const result = summarizeDownloadProgress(2048, null);
@@ -41,4 +41,24 @@ test("summarizeReleaseNotes: texto longo corta numa fronteira de palavra", () =>
   assert.ok(result!.length <= 51); // 50 + reticencias
   assert.ok(!result!.endsWith("palav…"), "nao deveria cortar no meio de uma palavra");
   assert.ok(result!.endsWith("…"));
+});
+
+test("shouldPlayUpdateFoundSound: toca so na transicao PRA available", () => {
+  assert.equal(shouldPlayUpdateFoundSound("checking", "available"), true);
+  assert.equal(shouldPlayUpdateFoundSound("idle", "available"), true);
+});
+
+test("shouldPlayUpdateFoundSound: nunca toca quando nao acha nada", () => {
+  assert.equal(shouldPlayUpdateFoundSound("checking", "idle"), false);
+  assert.equal(shouldPlayUpdateFoundSound("idle", "idle"), false);
+});
+
+test("shouldPlayUpdateFoundSound: nunca toca de novo se ja estava available (evita repetir a cada re-render)", () => {
+  assert.equal(shouldPlayUpdateFoundSound("available", "available"), false);
+});
+
+test("shouldPlayUpdateFoundSound: nunca toca ao sair de available (download/erro/dispensar)", () => {
+  assert.equal(shouldPlayUpdateFoundSound("available", "downloading"), false);
+  assert.equal(shouldPlayUpdateFoundSound("available", "dismissed"), false);
+  assert.equal(shouldPlayUpdateFoundSound("available", "error"), false);
 });

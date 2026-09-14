@@ -2129,6 +2129,16 @@ button:disabled,
     opacity: 0;
   }
 }
+/* Icone de "verificar atualizacoes" (issue #48) girando enquanto checa —
+   so transform, sem filter/box-shadow (regra do design system). */
+.nav-button__spin {
+  animation: nav-spin 800ms linear infinite;
+}
+@keyframes nav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .share-hero {
   min-height: 0;
   display: grid;

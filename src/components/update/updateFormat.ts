@@ -21,6 +21,15 @@ export function summarizeDownloadProgress(downloadedBytes: number, totalBytes: n
   return { percent, label: `${percent}% — ${formatBytes(downloadedBytes)} de ${formatBytes(totalBytes)}` };
 }
 
+/** Só toca o som de "achou atualização" na TRANSIÇÃO pra `available` — nunca
+ * de novo em cada re-render (o hook publica o mesmo status repetidas vezes
+ * por outros motivos, ex. progresso de download) e nunca quando já estava
+ * `available` antes (ex. usuário clicou "adiar" e o estado permaneceu o
+ * mesmo). Pedido do usuário: som só quando acha, silêncio quando não acha. */
+export function shouldPlayUpdateFoundSound(previousStatus: string, currentStatus: string): boolean {
+  return currentStatus === "available" && previousStatus !== "available";
+}
+
 /** Notas de release podem vir longas/com markdown cru do changelog —
  * corta num tamanho de aviso curto (não é uma tela de changelog
  * dedicada), sempre numa fronteira de palavra pra nunca cortar no meio. */

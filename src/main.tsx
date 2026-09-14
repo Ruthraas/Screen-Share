@@ -18,6 +18,7 @@ import { CommandPalette } from "./components/layout/CommandPalette";
 import { AccountProvider, useAccount, useSession } from "./components/layout/AccountProvider";
 import { RtcProvider } from "./components/rtc/RtcProvider";
 import { UpdateBanner } from "./components/update/UpdateBanner";
+import { UpdateProvider } from "./components/update/UpdateProvider";
 import type { Route } from "./data/types";
 import { parseRouteHash, routeAfterLogin, routeForSignedOut, sessionView } from "./services/sessionRouting";
 
@@ -34,7 +35,10 @@ function App() {
   // UpdateBanner fica fora do AppShell de propósito (issue #48: "não
   // altere UI fora do componente de atualização") — um componente
   // próprio, sobreposto, em vez de mexer no layout de cada página.
-  return <AccountProvider key={session.user.id} account={session.user}><RtcProvider><AuthenticatedApp signedIn /><UpdateBanner /></RtcProvider></AccountProvider>;
+  // UpdateProvider precisa envolver tanto o AppShell (o ícone da sidebar,
+  // `UpdateCheckButton`) quanto o banner — os dois usam a MESMA checagem,
+  // não uma cada.
+  return <AccountProvider key={session.user.id} account={session.user}><RtcProvider><UpdateProvider><AuthenticatedApp signedIn /><UpdateBanner /></UpdateProvider></RtcProvider></AccountProvider>;
 }
 
 function AuthenticatedApp({ signedIn, sessionError }: { signedIn: boolean; sessionError?: string }) {
