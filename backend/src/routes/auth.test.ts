@@ -13,7 +13,9 @@ const SIGNING_SECRET = "a".repeat(32);
 
 function build(options: { withGoogleConfigured?: boolean } = {}) {
   const providers: Record<OAuthProviderName, OAuthProvider> = {
-    google: fakeOAuthProvider("google", { "code-1": { providerAccountId: "g1", email: "oauth@example.com" } }),
+    google: fakeOAuthProvider("google", {
+      "code-1": { providerAccountId: "g1", email: "oauth@example.com", displayName: "Fulano de Tal", avatarUrl: "https://lh3.googleusercontent.com/foto.jpg" },
+    }),
     github: fakeOAuthProvider("github", {}),
     discord: fakeOAuthProvider("discord", {}),
   };
@@ -264,6 +266,25 @@ test("fluxo OAuth completo: start -> callback cria/loga usuário e devolve sess�
 
     const identity = verifyAccessToken(params.get("access_token")!, SIGNING_SECRET);
     assert.equal(identity.email, "oauth@example.com");
+    assert.equal(identity.displayName, "Fulano de Tal", "issue #70: nome do provedor chega no token de acesso");
+    assert.equal(identity.avatarUrl, "https://lh3.googleusercontent.com/foto.jpg");
+  } finally {
+    await app.close();
+  }
+});
+
+test("issue #70: refresh depois de um login OAuth continua carregando displayName/avatarUrl no novo token", async () => {
+  const app = build();
+  try {
+    const start = await app.inject({ method: "GET", url: "/v1/auth/oauth/google/start" });
+    const state = new URL(start.headers.location as string).searchParams.get("state")!;
+    const callback = await app.inject({ method: "GET", url: `/v1/auth/oauth/google/callback?code=code-1&state=${encodeURIComponent(state)}` });
+    const refreshToken = hashParams(callback.headers.location as string).get("refresh_token")!;
+
+    const refreshed = await app.inject({ method: "POST", url: "/v1/auth/refresh", payload: { refreshToken } });
+    const identity = verifyAccessToken(refreshed.json().accessToken, SIGNING_SECRET);
+    assert.equal(identity.displayName, "Fulano de Tal", "refresh lê de users, não precisa de um novo login OAuth");
+    assert.equal(identity.avatarUrl, "https://lh3.googleusercontent.com/foto.jpg");
   } finally {
     await app.close();
   }

@@ -9,7 +9,14 @@ const SECRET = "segredo-de-teste-32-caracteres!!";
 test("token de acesso emitido é verificável e devolve a identidade", () => {
   const token = issueAccessToken({ uid: "u1", email: "a@b.com" }, SECRET);
   const identity = verifyAccessToken(token, SECRET);
-  assert.deepEqual(identity, { uid: "u1", email: "a@b.com" });
+  assert.deepEqual(identity, { uid: "u1", email: "a@b.com", displayName: undefined, avatarUrl: undefined });
+});
+
+test("displayName/avatarUrl (issue #70) sobrevivem ao ciclo emitir/verificar quando presentes", () => {
+  const token = issueAccessToken({ uid: "u1", email: "a@b.com", displayName: "Fulano", avatarUrl: "https://cdn.example/avatar.png" }, SECRET);
+  const identity = verifyAccessToken(token, SECRET);
+  assert.equal(identity.displayName, "Fulano");
+  assert.equal(identity.avatarUrl, "https://cdn.example/avatar.png");
 });
 
 test("rejeita token assinado com outro segredo", () => {
