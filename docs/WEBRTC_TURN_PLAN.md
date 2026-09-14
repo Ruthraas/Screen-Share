@@ -69,50 +69,56 @@ sequenceDiagram
 | Captura local → `MediaStream` | #8 | Frontend | Pronto (aguardando validação ao vivo) |
 | Protocolo de sinalização (schema) | #38 | Backend | Fechada |
 | Relay de sinalização (`/ws`) | #9 | Backend | **Fechada** (2026-09-13) — critérios de relay validados com teste real, reforçada pela #42 (reconexão/heartbeat) |
-| Infra TURN (coturn) | #40 | Backend | Aberta |
-| Credenciais TURN temporárias | #41 | Backend | Aberta, depende de #40 |
-| Teste de capacidade | #47 | Backend | Aberta, depende de #40/#41/#42/#43 |
-| `RTCPeerConnection` do cliente + indicador de ping | #71 | Frontend | Aberta, depende de #8 (pronta) + #9 + #41 |
+| Infra TURN | #40 | Backend | **Decisão revisada (2026-09-14): Cloudflare Realtime TURN** (serviço gerenciado) em vez de coturn autogerenciado — ver `docs/backend/ARQUITETURA.md` |
+| Credenciais TURN temporárias | #41 | Backend | **Fechada** (2026-09-14) — validado com credenciais reais da Cloudflare, `iceServers` de verdade emitidos ponta a ponta |
+| Teste de capacidade | #47 | Backend | Aberta, depende de #41 estar validado com credencial real + #42/#43 |
+| `RTCPeerConnection` do cliente + indicador de ping | #71 | Frontend | Aberta, depende de #8 (pronta) + #9 (pronta) + #41 (pronta) — nenhuma dependência de backend restante |
 
-## O contrato exato que a #71 precisa do #41
+## O contrato exato que a #71 precisa do #41 (atualizado 2026-09-14)
 
-`POST /v1/turn-credentials` (já documentado em `docs/backend/openapi.yaml`)
-devolve `{ urls, username, credential, ttlSeconds }` — isso já bate
-exatamente com o formato que `RTCPeerConnection` espera em `iceServers`:
+`POST /v1/turn-credentials` (autenticado, `docs/backend/openapi.yaml`)
+devolve `{ iceServers, ttlSeconds }` — **não** um objeto plano
+`{urls, username, credential}` como uma versão anterior deste doc
+assumia; é a Cloudflare quem decide esse formato (endpoint
+`generate-ice-servers`, confirmado na doc oficial), e ele já bate 1:1 com
+`RTCConfiguration.iceServers`:
 
 ```ts
-const response = await fetch(apiUrl("/v1/turn-credentials"), { headers: authHeader });
-const { urls, username, credential } = await response.json();
-const peer = new RTCPeerConnection({
-  iceServers: [{ urls, username, credential }],
-});
+const response = await fetch(apiUrl("/v1/turn-credentials"), { headers: authHeader, method: "POST" });
+const { iceServers, ttlSeconds } = await response.json();
+const peer = new RTCPeerConnection({ iceServers }); // sem transformação nenhuma
 ```
 
-Nenhuma decisão nova precisa ser tomada aqui — o formato já existe e já
-serve. O único ponto de atenção pra quando a #71 for implementada: renovar a
-credencial antes do `ttlSeconds` expirar se a chamada demorar (ex.: se o
-usuário demorar pra aceitar uma chamada), buscando um novo
-`/v1/turn-credentials` em vez de reusar uma credencial vencida.
+`iceServers` sempre vem com duas entradas — **resolvido** o que a versão
+anterior deste doc deixava em aberto:
 
-## STUN entra junto, não no lugar do TURN
+```json
+[
+  { "urls": ["stun:stun.cloudflare.com:3478"] },
+  { "urls": ["turn:turn.cloudflare.com:3478?transport=udp", "turns:turn.cloudflare.com:5349?transport=tcp"], "username": "...", "credential": "..." }
+]
+```
 
-A regra "não alterar" da #40 diz "não tratar STUN isolado como solução
-final" — isso quer dizer que STUN sozinho não é suficiente (falha em NAT
-simétrico/firewall restritivo), não que STUN deva ser excluído. A prática
-padrão de WebRTC é incluir os dois na lista de `iceServers`: STUN permite
-conexão P2P direta e mais rápida quando possível (sem carga no relay), TURN
-garante que sempre existe um caminho quando STUN não é suficiente. Se o
-coturn do #40 já responde como STUN também (ele faz isso nativamente), o
-`urls` devolvido por `/v1/turn-credentials` provavelmente já inclui entradas
-`stun:` e `turn:` juntas — nesse caso a #71 não precisa adicionar nenhum
-servidor STUN externo por conta própria.
+A entrada STUN já vem junto, sem `username`/`credential` (não precisa —
+STUN não autentica); a #71 **não precisa adicionar nenhum servidor STUN
+externo por conta própria**, nem montar/filtrar a lista — é só passar
+`iceServers` direto pro `RTCPeerConnection`.
 
-## O que fica pra decidir quando a #71 for implementada de verdade
-(não é bloqueio agora, só não dá pra saber sem testar)
+Ponto de atenção pra quando a #71 for implementada: renovar a credencial
+antes do `ttlSeconds` (hoje 3600s) expirar se a chamada demorar, buscando
+um novo `/v1/turn-credentials` em vez de reusar uma credencial vencida.
 
-- Se `urls` de `/v1/turn-credentials` já vem com `stun:`+`turn:` juntos, ou
-  só `turn:` (e nesse caso a #71 precisaria adicionar um STUN público como
-  reforço).
-- Comportamento exato de renovação de credencial em chamadas muito longas
-  (`ttlSeconds` — provavelmente resolve com uma renovação simples antes de
-  expirar, mas só decide isso na hora de implementar).
+## Nota (2026-09-14, resolvida no mesmo dia): TURN Key precisava ser revalidada na Cloudflare
+
+O backend (`/v1/turn-credentials`) foi implementado, testado (`npm test`) e
+validado contra a API real da Cloudflare — a chamada chegava certinho no
+endpoint certo, com o formato certo (confirmado pelo próprio header
+`Link: <stun:stun.cloudflare.com:3478>; rel="ice-server"` que a Cloudflare
+devolve mesmo em erro). A `TURN_KEY_ID` configurada inicialmente não
+correspondia a uma TURN Key válida (`{"error":"cannot find specified
+key"}`) porque tinha sido copiada de **Cloudflare Calls/SFU** — produto
+diferente que usa os mesmos nomes de campo ("App ID"/"API Token") do
+Realtime TURN. **Resolvido**: chave certa gerada em Realtime → TURN,
+`backend/.env` atualizado, `POST /v1/turn-credentials` confirmado emitindo
+`iceServers` de verdade (STUN + TURN com credencial de curta duração) de
+ponta a ponta contra o backend real.
