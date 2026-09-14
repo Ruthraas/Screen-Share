@@ -8,4 +8,5 @@ src-tauri/target/
 artifacts/
 backend/data/
 backend/secrets/
+backend/reports/
 src-tauri/icons/SpotifySetup.exe
