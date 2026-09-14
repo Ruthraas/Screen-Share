@@ -2,11 +2,20 @@ import { useState } from "react";
 import { MemberTile } from "../components/groups/MemberTile";
 import { useStreamSelection } from "../components/groups/useStreamSelection";
 import { useAccount } from "../components/layout/AccountProvider";
+import { useRtc } from "../components/rtc/RtcProvider";
+import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { Button } from "../components/ui/Button";
 
+/**
+ * Issue #71: `sharingPeers`/`remoteStreams` vêm de verdade da malha de
+ * `RTCPeerConnection` (`useGroupConnections.ts`), não mais do campo estático
+ * `member.sharing` (nunca era definido antes desta issue — sempre `undefined`).
+ */
 export function MultiScreen() {
   const { selected, createInviteLink } = useAccount();
-  const activeIds = (selected?.members ?? []).filter(member => member.sharing).map(member => member.id);
+  const { remoteStreams, sharingPeers, peerQuality, signalingStatus } = useRtc();
+  const members = (selected?.members ?? []).map(member => ({ ...member, sharing: sharingPeers.has(member.id) }));
+  const activeIds = members.filter(member => member.sharing).map(member => member.id);
   const [memberId, setMemberId] = useStreamSelection(activeIds);
   const [inviteStatus, setInviteStatus] = useState("");
 
@@ -22,19 +31,34 @@ export function MultiScreen() {
   }
 
   if (!selected) return null;
+  const viewingMember = members.find(member => member.id === memberId);
+  const viewingStream = memberId ? remoteStreams.get(memberId) : undefined;
+
   return (
     <section className="multi-panel">
       <header>
-        <p>{selected.name} · {selected.activeStreams} transmissoes ativas</p>
+        <p>{selected.name} · {activeIds.length} transmissoes ativas</p>
         <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
       </header>
       <div className="multi-grid">
-        {selected.members.map(member => (
-          <MemberTile key={member.id} member={member} selected={memberId === member.id} onSelect={() => setMemberId(member.id)} />
+        {members.map(member => (
+          <MemberTile
+            key={member.id}
+            member={member}
+            selected={memberId === member.id}
+            quality={peerQuality.get(member.id)}
+            onSelect={() => setMemberId(member.id)}
+          />
         ))}
       </div>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
-      <p className="muted">grupo local. conexoes entre participantes ainda nao estao habilitadas</p>
+      {viewingMember && viewingStream ? (
+        <ScreenViewer user={viewingMember} stream={viewingStream} onStop={() => setMemberId(null)} />
+      ) : (
+        <p className="muted">
+          {signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
+        </p>
+      )}
     </section>
   );
 }

@@ -24,3 +24,30 @@ export function subscribeSharingActive(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/**
+ * O `MediaStream` local em si (issue #71) — mesmo motivo do sinal booleano
+ * acima: `useLocalCapture` fica dentro de `Share.tsx`, mas quem precisa
+ * anexar as tracks a cada `RTCPeerConnection` (`useGroupConnections.ts`)
+ * roda num provider acima de qualquer rota especifica, pra continuar
+ * mandando a tela mesmo se o usuario navegar pra outra pagina enquanto
+ * compartilha.
+ */
+type StreamListener = (stream: MediaStream | null) => void;
+let localStream: MediaStream | null = null;
+const streamListeners = new Set<StreamListener>();
+
+export function setLocalStream(value: MediaStream | null): void {
+  if (localStream === value) return;
+  localStream = value;
+  for (const listener of streamListeners) listener(value);
+}
+
+export function getLocalStream(): MediaStream | null {
+  return localStream;
+}
+
+export function subscribeLocalStream(listener: StreamListener): () => void {
+  streamListeners.add(listener);
+  return () => streamListeners.delete(listener);
+}
