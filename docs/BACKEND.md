@@ -675,6 +675,39 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     consentimento real dos três provedores OAuth (exige humano clicando —
     documentado issue a issue conforme apareceu) e capacidade sob carga
     real (isso é a #47, teste separado por design, não unitário).
+- **#82 — Hospedar o backend em produção (2026-09-14, EM ANDAMENTO)**:
+  infraestrutura de deploy pronta e commitada; o deploy real (criar conta,
+  volume, secrets, primeiro `fly deploy`) depende de ação do
+  @ProgVictorPe fora desta sessão — não é algo que dê pra automatizar
+  (criação de conta em serviço de terceiro). Decisão completa em
+  `docs/backend/ARQUITETURA.md`, passo a passo em
+  `docs/backend/HOSPEDAGEM.md`.
+  - **Fly.io + Volume persistente**, escolhido entre 4 opções avaliadas
+    na própria issue — decisão final do usuário, não da IA (a issue
+    registra isso explicitamente). Zero mudança de código: mesmo
+    `better-sqlite3`, `DATABASE_PATH` só aponta pro Volume montado.
+  - Novo `backend/Dockerfile` (`node:22-bookworm-slim`, não Alpine — o
+    `better-sqlite3` só tem prebuild pra glibc, issue #58) e
+    `backend/fly.toml` (`[[mounts]]` pro volume, `[http_service]` com
+    `min_machines_running = 1` + `auto_stop_machines = "off"` — nunca
+    escalar acima de 1 máquina, WebSocket de sinalização não sobrevive a
+    suspensão e SQLite não aguenta dois escritores concorrentes).
+  - **Não testado ainda de ponta a ponta**: sem Docker nem `flyctl`
+    localmente nesta sessão pra validar o build real — a validação real
+    acontece no primeiro `fly deploy` do usuário (que usa o builder
+    remoto do próprio Fly, não precisa de Docker local). Conferido à mão:
+    todo arquivo que o `Dockerfile` copia existe no caminho esperado;
+    `npm run build` gera exatamente `dist/index.js` (entrypoint do
+    `CMD`); `migrations/` fica no mesmo nível relativo que
+    `src/db/migrate.ts` espera em produção; sintaxe do `fly.toml`
+    validada com um parser TOML real.
+  - Pendente pro usuário (documentado em `docs/backend/HOSPEDAGEM.md`):
+    criar conta/autenticar no Fly, criar o app e o volume, configurar os
+    secrets de produção (`SESSION_SIGNING_SECRET`/`PASSWORD_PEPPER` novos,
+    nunca os de dev), `fly deploy`, validar persistência forçando um
+    restart, e atualizar o redirect URI em cada provedor OAuth
+    configurado (`https://<domínio>/v1/auth/oauth/<provider>/callback`)
+    — sem isso o login OAuth quebra em produção mesmo com o backend no ar.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
