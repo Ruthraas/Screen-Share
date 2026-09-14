@@ -1,6 +1,9 @@
 export interface AuthIdentity {
   uid: string;
   email?: string;
+  /** Nome/avatar do provedor OAuth usado no último login (issue #70) — nunca existe pra conta só-senha. */
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 export class TokenVerificationError extends Error {

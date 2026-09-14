@@ -229,15 +229,29 @@ por padrão pro navegador dev, quebrando o app empacotado.
 
 Credenciais reais de cada provedor (`GOOGLE_CLIENT_ID`/`_SECRET` etc.) são
 opcionais na config — sem elas, aquele provedor responde `404` no `/start`
-em vez de travar o boot do backend inteiro. Só o Google tem credenciais
-reais até agora (2026-09-12); GitHub e Discord aguardam o Ruthraas criar os
-apps nas respectivas consoles de desenvolvedor — **isso não é algo que uma
-sessão de IA consegue fazer**, precisa de alguém com acesso a essas contas.
+em vez de travar o boot do backend inteiro. Os três provedores (Google,
+GitHub, Discord) têm credenciais reais configuradas desde 2026-09-12.
 
 **Identidade de conta OAuth** (`src/auth/userRepository.ts`): a primeira
 vez que um `(provider, providerAccountId)` aparece, ou vincula a um usuário
 existente com o mesmo e-mail, ou cria um usuário novo (sem senha). Reusar o
 mesmo provedor+conta depois é idempotente.
+
+**Adendo (issue #70, 2026-09-14): nome/avatar do provedor entram no access
+token, sem endpoint novo.** Cada `fetchProfile` (Google/GitHub/Discord)
+agora também extrai `displayName`/`avatarUrl` (opcionais — nunca bloqueiam
+login se o provedor não devolver). Persistidos em `users.display_name`/
+`users.avatar_url` (não em `oauth_accounts`: um usuário só tem um nome de
+exibição por vez) via `UPDATE ... COALESCE(?, coluna)` — sobrescreve só
+quando o provedor de fato devolveu um valor nesse login, nunca apaga um
+nome/avatar bom por uma resposta incompleta pontual; "o provedor usado por
+último vence" é a regra, sem prioridade fixa entre provedores. Decisão
+sobre onde expor: em vez de um `GET /v1/me` novo (opção que a issue também
+sugeria), os campos entram direto no **access token** — mesmo padrão já
+usado pra `uid`/`email` desde a #30 (`src/auth/sessionTokens.ts`), que o
+cliente já decodifica localmente sem round-trip. Conta só-senha (sem OAuth
+vinculado nunca) não tem nome/avatar do backend — o fallback pro e-mail já
+é responsabilidade do frontend, não muda aqui.
 
 ## 6. Próximos passos
 

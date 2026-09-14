@@ -556,6 +556,40 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     default 20); `RATE_LIMIT_REGISTER_MAX=2` via env muda o comportamento
     de verdade (3ª tentativa de registro passa a 429); payload de ~2MB
     responde 413 com o envelope certo, não 500.
+- **#70 — Nome/avatar do provedor OAuth na sessão (2026-09-14)**: achado
+  pelo @Ruthraas testando login real (issue #1). Decisão completa em
+  `docs/backend/ARQUITETURA.md` §5.
+  - `OAuthProfile` (`src/auth/oauthProviders.ts`) ganhou `displayName`/
+    `avatarUrl` opcionais — Google (`name`/`picture`), GitHub (`name` com
+    fallback pro `login`, `avatar_url`), Discord (`global_name` com
+    fallback pro `username`, avatar montado a partir do hash:
+    `https://cdn.discordapp.com/avatars/{id}/{avatar}.png`, sem `avatarUrl`
+    se não houver hash).
+  - Nova migração `0004_user_display_profile.sql`: `users.display_name`/
+    `users.avatar_url`, nulos pra conta só-senha. `findOrCreateOAuthUser`
+    atualiza os dois a cada login via `UPDATE ... COALESCE(?, coluna)` —
+    "o provedor usado por último vence", sem apagar um valor bom quando o
+    provedor não devolve nada numa chamada específica.
+  - **Sem endpoint novo**: os campos entram direto no **access token**
+    (`src/auth/sessionTokens.ts`), mesmo padrão já usado pra `uid`/`email`
+    desde a #30 — o cliente decodifica localmente, sem round-trip. Login/
+    registro/refresh por e-mail+senha também carregam os campos se a
+    conta já tiver feito login OAuth alguma vez antes (persistido em
+    `users`, não depende de repetir o OAuth a cada sessão).
+  - Validado: `npm test` 165/165 (11 testes novos — extração de perfil por
+    provedor com `fetch` trocado por um fake só no teste, incluindo os
+    fallbacks de GitHub/Discord; persistência/"último vence"/não-apagar em
+    `findOrCreateOAuthUser`; fluxo OAuth completo checando o token
+    decodificado; refresh depois de OAuth continua carregando os campos).
+    Migração real testada com `npm run migrate` contra um `.db` de
+    verdade (`ALTER TABLE ... DROP COLUMN` funciona na versão de SQLite
+    empacotada pelo `better-sqlite3` em uso). **Não validado** com
+    consentimento real de Google/GitHub/Discord nesta etapa — isso exige
+    um humano clicando no fluxo de autorização de cada provedor, fora do
+    que dá pra automatizar aqui; os três `fetchProfile` foram testados
+    com resposta simulada fiel ao formato real de cada API (confirmado
+    nas docs oficiais, mesma verificação já feita pra endpoints/scopes
+    na issue #30).
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
@@ -622,6 +656,7 @@ Contrato HTTP em [`docs/backend/openapi.yaml`](backend/openapi.yaml) (#27). **Gr
   - **`src/oauth.tsx`/`desktop_auth.rs` já reescritos pelo Ruthraas** (commits `7759a63`/`c94186a`/`016a8d1`) pro contrato novo: o cliente navega (não popup — é um redirect de verdade, ou no desktop abre o navegador do sistema) pra `GET /v1/auth/oauth/{google|github|discord}/start?target=browser|desktop` no backend; o backend redireciona pro provedor; o provedor volta pro backend (`/callback`); o backend troca o código, cria a sessão e redireciona pro destino escolhido em `target` (browser = fragmento da URL de `OAUTH_FRONTEND_REDIRECT_URL_BROWSER`; desktop = deep link `screenshare://` via `OAUTH_FRONTEND_REDIRECT_URL_DESKTOP`) com o resultado: sucesso = `#access_token=...&refresh_token=...&provider=...`; erro = `#error=<código>` (`invalid_state`, `missing_code`, `provider_error`, `provider_not_configured`, `provider_unknown`). **Os dois destinos já podem estar configurados ao mesmo tempo** (2026-09-12) — não é mais preciso escolher um só no `.env` do backend.
   - **Cadastro/login por e-mail e senha também são novos**: `POST /v1/auth/register` (e-mail+senha, 201, já loga — devolve a sessão) e `POST /v1/auth/login`. Senha errada e conta inexistente dão a mesma resposta `401` genérica de propósito.
   - **Google, GitHub e Discord têm credenciais reais configuradas (2026-09-12)** — os três `/start` redirecionam de verdade pro provedor.
+  - **Nome/avatar do provedor OAuth já vêm no `accessToken` (2026-09-14, #70)**: decodificando o payload (mesma técnica já usada pra `uid`/`email`), agora também vêm `displayName`/`avatarUrl` **quando a conta já fez login OAuth alguma vez** (Google/GitHub/Discord) — ambos opcionais, `undefined` pra conta só e-mail+senha sem OAuth vinculado (fallback pro e-mail continua sendo decisão do frontend, isso não muda). Não tem endpoint `/v1/me` novo — de propósito, os campos já chegam de graça em qualquer `register`/`login`/`refresh`/callback OAuth que devolva sessão.
 - **Erros**: envelope único `{ "error": { "code", "message", "correlationId" } }` — `code` é estável p/ lógica do cliente, `message` é pt-BR seguro pra exibir direto. Ver schema `Error` no OpenAPI. Códigos em uso: `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation_error` (422).
 - **Importante para UX**: grupo inexistente e "usuário autenticado mas não é membro" respondem **os dois `404`**, nunca `403` — de propósito, pra não revelar a quem não participa que o grupo existe. Não trate 404 nessas rotas como "erro de rede", é esperado pra quem não é membro.
 - **CORS (#59) já configurado**: o WebView do Tauri empacotado (`https://tauri.localhost`) e o dev server do Vite (`http://127.0.0.1:5173`) já estão na allowlist — chamadas fetch/XHR do cliente devem funcionar sem precisar de proxy nem de desabilitar segurança do WebView. Se o app rodar de outra origem (porta diferente, outro esquema), o backend vai rejeitar silenciosamente (sem `Access-Control-Allow-Origin`) — avisar o lado backend pra adicionar em `CORS_ALLOWED_ORIGINS`.
