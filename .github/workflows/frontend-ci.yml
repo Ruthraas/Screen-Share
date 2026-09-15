@@ -38,6 +38,9 @@ on:
 
 jobs:
   build-and-test:
+    # Nome explícito — mesmo motivo do backend-ci.yml: sem isso colide com
+    # o job de mesmo nome lá, indistinguível numa lista de checks de PR.
+    name: Frontend build-and-test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

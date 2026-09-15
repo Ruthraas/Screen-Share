@@ -23,6 +23,10 @@ on:
 
 jobs:
   build-and-test:
+    # Nome explícito: sem isso, o check aparece só como "build-and-test" —
+    # igual ao job de mesmo nome no frontend-ci.yml, indistinguível numa
+    # lista de checks de PR (e ambíguo pra branch protection referenciar).
+    name: Backend build-and-test
     runs-on: windows-latest
     defaults:
       run:
