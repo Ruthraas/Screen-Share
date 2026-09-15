@@ -1,9 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "../../data/types";
 import { Avatar } from "../ui/Avatar";
-import { IconEye, IconPlayerStop } from "../ui/Icons";
+import { IconEye, IconMaximize, IconMinimize, IconPlayerStop } from "../ui/Icons";
 import { log } from "../../services/logger";
 import { watchStreamEnded } from "./streamLifecycle";
+
+/** Tela cheia de verdade (Fullscreen API do navegador/WebView2), não só CSS
+ * ocupando a janela — pedido do usuário: a transmissão precisa ser algo
+ * único que dá pra colocar em tela cheia de fato. `document.fullscreenElement`
+ * é a fonte de verdade (não um estado local isolado): o usuário pode sair
+ * apertando Esc sem passar pelo botão, e o listener de `fullscreenchange`
+ * mantém o ícone/estado corretos nesse caso também. */
+function useFullscreen(target: React.RefObject<HTMLElement | null>) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(document.fullscreenElement === target.current);
+    document.addEventListener("fullscreenchange", handleChange);
+    return () => document.removeEventListener("fullscreenchange", handleChange);
+  }, [target]);
+
+  async function toggle() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await target.current?.requestFullscreen();
+    } catch (error) {
+      log.warn("capture", "falha ao alternar tela cheia", { name: error instanceof Error ? error.name : "unknown" });
+    }
+  }
+
+  return { isFullscreen, toggle };
+}
 
 export function ScreenViewer({
   user,
@@ -34,6 +60,8 @@ export function ScreenViewer({
   onStreamEnded?: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const section = useRef<HTMLElement>(null);
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(section);
   // Botão "ver tela" (pedido do usuário) — só na visualização principal da
   // transmissão, nunca nos cards de prévia do seletor. O vídeo continua
   // recebendo frames em segundo plano (não pausa nada); é só um gesto
@@ -69,7 +97,7 @@ export function ScreenViewer({
   }, [stream, onStreamEnded]);
 
   return (
-    <section className={`screen-viewer ${members.length === 0 ? "screen-viewer--solo" : ""}`} aria-label={"tela de " + user.name}>
+    <section ref={section} className={`screen-viewer ${members.length === 0 ? "screen-viewer--solo" : ""} ${isFullscreen ? "is-fullscreen" : ""}`} aria-label={"tela de " + user.name}>
       <div className="stream-stage">
         {stream ? (
           <video
@@ -98,7 +126,14 @@ export function ScreenViewer({
           </div>
         ) : null}
         <span className="viewer-label">{user.name}</span>
-        <button className="viewer-minimize nav-button" title="parar transmissao" onClick={onStop}><IconPlayerStop /></button>
+        <div className="viewer-actions">
+          {stream ? (
+            <button className="nav-button" title={isFullscreen ? "sair da tela cheia" : "tela cheia"} onClick={() => void toggleFullscreen()}>
+              {isFullscreen ? <IconMinimize /> : <IconMaximize />}
+            </button>
+          ) : null}
+          <button className="nav-button" title="parar transmissao" onClick={onStop}><IconPlayerStop /></button>
+        </div>
       </div>
       {members.length > 0 ? (
         <aside className="viewer-members">

@@ -1384,13 +1384,20 @@ textarea {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  flex: 0 0 auto;
 }
 
+/* Faixa compacta de participantes (não um grid de cards grandes) — o
+   viewer da transmissão é quem precisa dominar a tela (pedido do usuário:
+   "algo único em tela única, cheia"), a faixa só deixa trocar quem você
+   está vendo ou iniciar sua própria transmissão sem empurrar o viewer pra
+   baixo do scroll conforme o grupo cresce. */
 .multi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  display: flex;
   gap: 10px;
   min-height: 0;
+  flex: 0 0 auto;
+  overflow-x: auto;
 }
 
 .settings-card {
@@ -2073,17 +2080,32 @@ button:disabled,
   margin: 0;
   padding: 24px 40px;
   position: relative;
-  display: grid;
-  /* Numero de linhas variavel agora (issue #71: status do convite e o
-     viewer/texto de baixo sao ambos condicionais) — linhas fixas demais
-     forcavam um scroll a mais toda vez que um item extra aparecia. */
-  grid-auto-rows: auto;
+  /* flex (não mais grid) — o viewer da transmissão precisa poder crescer
+     pra preencher todo o espaço restante (`flex: 1; min-height: 0` nele),
+     algo que `flex` em filho de `display: grid` simplesmente ignora (era
+     a causa real do viewer ficar pequeno e empurrado pra baixo do grid de
+     membros, mesmo já tendo `flex: 1` declarado). Header e faixa de
+     participantes mantêm altura própria (`flex: 0 0 auto`); só o
+     viewer/placeholder cresce. */
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  align-content: start;
-  overflow: auto;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
   flex: 1;
+}
+/* Único filho direto que deve crescer pra preencher o espaço restante —
+   header, faixa de participantes e o aviso de convite ficam do tamanho do
+   próprio conteúdo (comportamento padrão de flex-item, sem precisar
+   declarar nada a mais neles). */
+.multi-viewer-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.multi-viewer-area .muted {
+  margin: auto;
 }
 .multi-panel header p {
   margin: 0;
@@ -2093,8 +2115,9 @@ button:disabled,
 }
 .multi-grid .member-tile {
   min-height: 0;
-  height: auto;
-  aspect-ratio: 1;
+  height: 84px;
+  width: 84px;
+  flex: 0 0 auto;
 }
 .live-dot {
   position: absolute;
@@ -2231,6 +2254,12 @@ kbd {
   flex: 1;
   width: 100%;
 }
+.screen-viewer.is-fullscreen {
+  border: 0;
+  border-radius: 0;
+  width: 100vw;
+  height: 100vh;
+}
 /* Sem outros participantes ainda (preview local, issue #8) — nao reserva a
    coluna de 70px vazia, senao fica uma faixa sem nada do lado. */
 .screen-viewer--solo {
@@ -2295,27 +2324,33 @@ kbd {
   color: var(--accent);
   background: var(--accent-soft);
 }
-.viewer-label,
-.viewer-minimize {
+.viewer-label {
   position: absolute;
   top: 10px;
+  left: 10px;
   background: rgba(10, 12, 11, 0.85);
-  color: #E4E7E0;
+  border-top: 1px solid var(--border);
   border: 1px solid var(--border);
   border-radius: 6px;
-}
-.viewer-label {
-  border-top: 1px solid var(--border);
   padding: 10px 12px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 9px;
-  left: 10px;
   font-size: 11px;
 }
-.viewer-minimize {
+.viewer-actions {
+  position: absolute;
+  top: 10px;
   right: 10px;
+  display: flex;
+  gap: 8px;
+}
+.viewer-actions .nav-button {
+  background: rgba(10, 12, 11, 0.85);
+  color: #E4E7E0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 .viewer-members {
   display: flex;

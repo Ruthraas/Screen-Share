@@ -1,4 +1,4 @@
-export { IconHome, IconUsers, IconSettings, IconScreenShare as IconShare, IconPlus, IconSearch, IconLogout, IconChevronRight, IconChevronLeft, IconEye, IconPlayerStop, IconUser, IconEyeOff, IconWifi, IconWifi2, IconWifiOff, IconDownload, IconX, IconAlertTriangle } from "@tabler/icons-react";
+export { IconHome, IconUsers, IconSettings, IconScreenShare as IconShare, IconPlus, IconSearch, IconLogout, IconChevronRight, IconChevronLeft, IconEye, IconPlayerStop, IconUser, IconEyeOff, IconWifi, IconWifi2, IconWifiOff, IconDownload, IconX, IconAlertTriangle, IconMaximize, IconMinimize } from "@tabler/icons-react";
 
 export function BrandMark({ small = false }: { small?: boolean }) {
   return (
