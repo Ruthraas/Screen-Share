@@ -1,6 +1,6 @@
 [package]
 name = "screenshare"
-version = "1.0.0"
+version = "1.0.1"
 description = "ScreenShare desktop app"
 authors = ["ScreenShare"]
 edition = "2021"
