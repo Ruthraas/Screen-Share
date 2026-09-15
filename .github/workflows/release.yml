@@ -62,7 +62,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "ScreenShare ${{ github.ref_name }}"
+          # Nome visível do release fixo (decisão de produto) — a versão
+          # continua existindo na tag em si (github.ref_name), só não
+          # aparece mais no título. O manifesto do updater (latest.json)
+          # segue usando a tag pra comparar versões, não o releaseName.
+          releaseName: "Screen Share"
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
