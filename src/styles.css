@@ -1320,6 +1320,11 @@ textarea {
   margin-bottom: 12px;
   flex: 0 0 auto;
 }
+.multi-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .settings-card {
   width: min(420px, calc(100vw - 40px));
