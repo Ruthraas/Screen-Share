@@ -14,6 +14,8 @@ export interface Group {
 export interface Member {
   userId: string;
   role: Role;
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 export interface GroupDetail extends Group {
@@ -122,11 +124,19 @@ export class GroupsRepository {
     const group = groupRs.rows[0] as unknown as GroupRow | undefined;
     if (!group) return undefined;
 
+    // LEFT JOIN (não INNER) em users pra trazer displayName/avatarUrl reais de
+    // cada membro (issue #70 deixou esses dados no banco, mas essa query nunca
+    // foi atualizada pra devolvê-los — todo membro que não fosse o próprio
+    // usuário aparecia sem nome de verdade no cliente, cobrindo o buraco com um
+    // rótulo gerado do id). LEFT JOIN é essencial, não cosmético: identidades de
+    // teste (FakeTokenVerifier) e, em tese, qualquer uid sem linha em `users`
+    // ainda precisam aparecer na lista de membros — um INNER JOIN os apagaria da
+    // resposta inteira, não só sem nome.
     const membersRs = await this.db.execute({
-      sql: "SELECT user_id, role FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
+      sql: "SELECT gm.user_id, gm.role, u.display_name, u.avatar_url FROM group_members gm LEFT JOIN users u ON u.id = gm.user_id WHERE gm.group_id = ? ORDER BY gm.joined_at ASC",
       args: [groupId],
     });
-    const members = membersRs.rows as unknown as { user_id: string; role: Role }[];
+    const members = membersRs.rows as unknown as { user_id: string; role: Role; display_name: string | null; avatar_url: string | null }[];
 
     return {
       id: group.id,
@@ -134,7 +144,12 @@ export class GroupsRepository {
       ownerId: group.owner_id,
       createdAt: group.created_at,
       role,
-      members: members.map((m) => ({ userId: m.user_id, role: m.role })),
+      members: members.map((m) => ({
+        userId: m.user_id,
+        role: m.role,
+        displayName: m.display_name ?? undefined,
+        avatarUrl: m.avatar_url ?? undefined,
+      })),
     };
   }
 

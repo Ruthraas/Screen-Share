@@ -1,6 +1,6 @@
 // Contratos locais (UI): o que os componentes do cliente consomem hoje,
 // com dados vindos de localData.ts/authClient.ts (issue #12).
-export type Route = "login" | "empty" | "home" | "share" | "multi" | "room" | "settings" | "profile";
+export type Route = "login" | "empty" | "home" | "multi" | "room" | "settings" | "profile";
 export type User = { id: string; name: string; email?: string; initials: string; online: boolean; sharing?: boolean; current?: boolean; photoURL?: string };
 export type Group = { id: string; name: string; members: User[]; role?: Role };
 export type Preferences = { theme: "dark" | "light"; notifications: boolean };
@@ -21,7 +21,7 @@ export type ApiGroup = {
   createdAt: string;
 };
 
-export type ApiGroupMember = { userId: string; role: Role };
+export type ApiGroupMember = { userId: string; role: Role; displayName?: string; avatarUrl?: string };
 
 export type ApiGroupDetail = ApiGroup & { members: ApiGroupMember[] };
 

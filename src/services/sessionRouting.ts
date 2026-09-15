@@ -9,7 +9,7 @@ export type SessionState<TUser = unknown> = {
 
 export type SessionView = "loading" | "login" | "app";
 
-const protectedRoutes = new Set<Route>(["empty", "home", "share", "multi", "room", "settings", "profile"]);
+const protectedRoutes = new Set<Route>(["empty", "home", "multi", "room", "settings", "profile"]);
 
 export function sessionView(session: SessionState) {
   if (!session.ready) return "loading";
@@ -34,7 +34,6 @@ export function routeAfterLogin(requested: Route, account: Pick<AccountData, "gr
   // transmissão, é sobre nem ter pra onde ir dentro de uma sala).
   if (requested === "room") return account.selectedId ? "room" : "multi";
   if (account.groups.length === 0) return "empty";
-  if (requested === "share" && account.selectedId) return "share";
   return "home";
 }
 
@@ -43,5 +42,5 @@ export function routeForSignedOut(requested: Route): Route {
 }
 
 function isRoute(value: string): value is Route {
-  return ["login", "empty", "home", "share", "multi", "room", "settings", "profile"].includes(value);
+  return ["login", "empty", "home", "multi", "room", "settings", "profile"].includes(value);
 }

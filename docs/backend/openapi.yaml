@@ -732,6 +732,14 @@ components:
                     type: string
                   role:
                     $ref: "#/components/schemas/Role"
+                  displayName:
+                    type: string
+                    nullable: true
+                    description: Nome do provedor OAuth ou salvo pelo próprio usuário; ausente/null se a conta nunca definiu um.
+                  avatarUrl:
+                    type: string
+                    nullable: true
+                    description: Foto do provedor OAuth ou salva pelo próprio usuário; ausente/null se a conta nunca definiu uma.
 
     CreateGroupRequest:
       type: object
