@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "../../data/types";
 import { Avatar } from "../ui/Avatar";
-import { IconEye, IconMaximize, IconMinimize, IconPlayerStop } from "../ui/Icons";
+import { IconEye, IconMaximize, IconMinimize, IconPlayerStop, IconVolume, IconVolumeOff } from "../ui/Icons";
 import { log } from "../../services/logger";
 import { watchStreamEnded } from "./streamLifecycle";
 
@@ -36,21 +36,29 @@ export function ScreenViewer({
   members = [],
   stream,
   loading = false,
+  emptyMessage,
   onStop,
   onSelect,
   onStreamEnded,
 }: {
-  user: User;
+  /** Quem está sendo visto — opcional pra dar pra montar este componente
+   * mesmo sem ninguém selecionado ainda (a sidebar de membros continua
+   * visível, o palco central mostra `emptyMessage` no lugar do vídeo). */
+  user?: User;
   members?: User[];
   stream?: MediaStream;
   /** Existe um intervalo real entre a captura iniciar e o primeiro frame de
    * verdade chegar — sem indicar isso, a tela em branco parece travada em
    * vez de carregando (issue #8, pedido do usuário). */
   loading?: boolean;
+  /** Texto mostrado no palco quando não há `stream` (ninguém selecionado,
+   * ou conectando ainda) — quem chama decide a mensagem certa pro estado. */
+  emptyMessage?: string;
   /** Para a captura de verdade (não é um "minimizar": ainda não existe
    * modo PiP/segundo plano, então o botão precisa deixar claro que
-   * encerra a transmissão, não só esconde a janela). */
-  onStop: () => void;
+   * encerra a transmissão, não só esconde a janela). Só faz sentido (e só
+   * é mostrado) quando existe um `stream` de verdade. */
+  onStop?: () => void;
   onSelect?: (user: User) => void;
   /** Dispara quando o stream termina sozinho (issue #19: "estado
    * encerrado") — ex. usuário para o compartilhamento pelo diálogo nativo
@@ -71,6 +79,20 @@ export function ScreenViewer({
   useEffect(() => {
     if (!stream) setRevealed(false);
   }, [stream]);
+
+  // Volume/mute (pedido do usuário: "ferramentas de abaixar volume") —
+  // começa mudo de propósito, mesmo default que todo player de vídeo usa
+  // (autoplay com som costuma ser bloqueado pela política do WebView2/
+  // navegador de qualquer forma; o usuário liga quando quiser).
+  const [muted, setMuted] = useState(true);
+  const [volume, setVolume] = useState(1);
+  useEffect(() => {
+    const element = video.current;
+    if (element) {
+      element.muted = muted;
+      element.volume = volume;
+    }
+  }, [muted, volume, stream]);
 
   useEffect(() => {
     const element = video.current;
@@ -97,19 +119,20 @@ export function ScreenViewer({
   }, [stream, onStreamEnded]);
 
   return (
-    <section ref={section} className={`screen-viewer ${members.length === 0 ? "screen-viewer--solo" : ""} ${isFullscreen ? "is-fullscreen" : ""}`} aria-label={"tela de " + user.name}>
+    <section ref={section} className={`screen-viewer ${members.length === 0 ? "screen-viewer--solo" : ""} ${isFullscreen ? "is-fullscreen" : ""}`} aria-label={user ? "tela de " + user.name : "nenhuma transmissao selecionada"}>
       <div className="stream-stage">
         {stream ? (
           <video
             ref={video}
             autoPlay
             playsInline
-            muted
             className={revealed ? "" : "is-hidden-until-revealed"}
             onError={() => log.warn("capture", "elemento de video reportou erro de reproducao")}
           />
         ) : (
-          <div className="stream-placeholder" />
+          <div className="stream-placeholder">
+            {emptyMessage ? <p className="muted">{emptyMessage}</p> : null}
+          </div>
         )}
         {stream && loading ? (
           <div className="stream-loading">
@@ -125,20 +148,40 @@ export function ScreenViewer({
             </button>
           </div>
         ) : null}
-        <span className="viewer-label">{user.name}</span>
-        <div className="viewer-actions">
-          {stream ? (
+        {stream && user ? <span className="viewer-label">{user.name}</span> : null}
+        {stream ? (
+          <div className="viewer-actions">
+            <div className="viewer-volume">
+              <button className="nav-button" title={muted ? "ativar som" : "silenciar"} onClick={() => setMuted(m => !m)}>
+                {muted || volume === 0 ? <IconVolumeOff /> : <IconVolume />}
+              </button>
+              <input
+                type="range"
+                className="viewer-volume__slider"
+                aria-label="volume"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                onChange={event => {
+                  const next = Number(event.target.value);
+                  setVolume(next);
+                  setMuted(next === 0);
+                }}
+              />
+            </div>
             <button className="nav-button" title={isFullscreen ? "sair da tela cheia" : "tela cheia"} onClick={() => void toggleFullscreen()}>
               {isFullscreen ? <IconMinimize /> : <IconMaximize />}
             </button>
-          ) : null}
-          <button className="nav-button" title="parar transmissao" onClick={onStop}><IconPlayerStop /></button>
-        </div>
+            {onStop ? <button className="nav-button" title="parar transmissao" onClick={onStop}><IconPlayerStop /></button> : null}
+          </div>
+        ) : null}
       </div>
       {members.length > 0 ? (
         <aside className="viewer-members">
           {members.map(member => (
-            <button key={member.id} title={member.name} className={"viewer-member " + (member.current ? "is-current" : "")} onClick={() => onSelect?.(member)}>
+            <button key={member.id} title={member.name} className={"viewer-member " + (member.current ? "is-current" : "") + (member.sharing ? " is-live" : "")} onClick={() => onSelect?.(member)}>
+              {member.sharing ? <span className="live-dot" /> : null}
               <Avatar user={member} size="sm" />
               <span>{member.name}</span>
             </button>

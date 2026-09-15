@@ -1307,72 +1307,6 @@ textarea {
   transform: scale(0.98);
 }
 
-.member-tile {
-  min-height: 168px;
-  position: relative;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text-primary);
-  transition: border-color 120ms ease, background 120ms ease, transform 100ms ease-out;
-}
-
-.member-tile:hover,
-.member-tile.is-selected,
-.member-tile.is-sharing {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.member-tile:active {
-  transform: scale(0.99);
-}
-
-.member-tile:hover .member-tile__center svg,
-.member-tile.is-sharing .member-tile__center svg {
-  color: var(--accent);
-}
-
-.member-tile.is-sharing::after {
-  content: "";
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 6px;
-  height: 6px;
-  background: var(--accent);
-  border-radius: 2px;
-  animation: pulse-ring 1.5s ease-out infinite;
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
-  }
-}
-
-.member-tile__center {
-  display: grid;
-  place-items: center;
-  gap: 12px;
-}
-
-.member-tile__center svg {
-  width: 23px;
-  height: 23px;
-  color: var(--accent);
-}
-
-.member-tile strong {
-  color: var(--text-primary);
-  font-size: 12px;
-}
-
 .live-dot.live-dot--inline {
   position: static;
   display: inline-block;
@@ -1385,19 +1319,6 @@ textarea {
   justify-content: space-between;
   margin-bottom: 12px;
   flex: 0 0 auto;
-}
-
-/* Faixa compacta de participantes (não um grid de cards grandes) — o
-   viewer da transmissão é quem precisa dominar a tela (pedido do usuário:
-   "algo único em tela única, cheia"), a faixa só deixa trocar quem você
-   está vendo ou iniciar sua própria transmissão sem empurrar o viewer pra
-   baixo do scroll conforme o grupo cresce. */
-.multi-grid {
-  display: flex;
-  gap: 10px;
-  min-height: 0;
-  flex: 0 0 auto;
-  overflow-x: auto;
 }
 
 .settings-card {
@@ -1561,10 +1482,6 @@ button:focus-visible {
 
   .share-box {
     width: min(280px, 80vw);
-  }
-
-  .multi-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .group-list {
@@ -2113,12 +2030,6 @@ button:disabled,
   text-transform: none;
   font-size: 12px;
 }
-.multi-grid .member-tile {
-  min-height: 0;
-  height: 84px;
-  width: 84px;
-  flex: 0 0 auto;
-}
 .live-dot {
   position: absolute;
   right: 10px;
@@ -2274,6 +2185,9 @@ kbd {
   width: 100%;
   height: 100%;
   background: var(--gray-block);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .stream-loading {
   position: absolute;
@@ -2361,6 +2275,7 @@ kbd {
   border-left: 1px solid var(--border);
 }
 .viewer-member {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 8px;
@@ -2371,8 +2286,22 @@ kbd {
   color: var(--text-primary);
   font-size: 9px;
 }
-.viewer-member.is-current {
+.viewer-member.is-current,
+.viewer-member.is-live {
   border-color: var(--accent);
+}
+.viewer-member .live-dot {
+  right: 6px;
+  top: 6px;
+}
+.viewer-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.viewer-volume__slider {
+  width: 64px;
+  accent-color: var(--accent);
 }
 
 h1, h2, h3, h4, h5, h6 {
