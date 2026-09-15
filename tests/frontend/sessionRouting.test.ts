@@ -9,7 +9,7 @@ test("session view covers loading, error login and authenticated app states", ()
 });
 
 test("signed out users are redirected away from protected routes", () => {
-  assert.equal(routeForSignedOut("share"), "login");
+  assert.equal(routeForSignedOut("room"), "login");
   assert.equal(routeForSignedOut("settings"), "login");
   assert.equal(routeForSignedOut("login"), "login");
 });
@@ -21,7 +21,7 @@ test("login route resolves to empty state when the account has no groups", () =>
 
 test("login route resolves to home when the account already has groups", () => {
   assert.equal(routeAfterLogin("login", { groups: [{ id: "g1", name: "dev" }], selectedId: "g1" }), "home");
-  assert.equal(routeAfterLogin("share", { groups: [{ id: "g1", name: "dev" }], selectedId: "g1" }), "share");
+  assert.equal(routeAfterLogin("home", { groups: [{ id: "g1", name: "dev" }], selectedId: "g1" }), "home");
 });
 
 test("room route requires a selected group, falls back to the group list otherwise", () => {

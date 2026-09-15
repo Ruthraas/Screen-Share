@@ -175,7 +175,11 @@ try {
   await page.getByRole("button", { name: "todos os grupos", exact: true }).waitFor();
   await wave(); await snapshot("room");
   await page.getByTitle("inicio", { exact: true }).click();
-  await page.getByText("compartilhar_tela", { exact: true }).waitFor();
+  // Home virou um resumo de conta neutro (nao mais "compartilhar_tela"
+  // amarrado ao grupo selecionado) — compartilhar tela agora vive dentro
+  // da sala de cada grupo (rota "room", ja coberta acima via "todos os
+  // grupos").
+  await page.getByRole("heading", { name: "seus grupos", exact: true }).waitFor();
   await wave(); await snapshot("home");
   await page.getByTitle("grupos", { exact: true }).click();
   await page.getByRole("heading", { name: "grupos", exact: true }).waitFor();

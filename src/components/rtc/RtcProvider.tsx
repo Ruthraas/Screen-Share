@@ -6,9 +6,8 @@ import { useGroupConnections, type GroupConnectionsState } from "./useGroupConne
 const Context = createContext<GroupConnectionsState | null>(null);
 
 /** Estado das conexões WebRTC do grupo selecionado (issue #71) — leitura em
- * qualquer página, sem prop-drilling entre `Share.tsx`/`MultiScreen.tsx`
- * (mesmo motivo de `sharingState.ts`: a conexão precisa continuar viva
- * mesmo trocando de rota). */
+ * qualquer página sem prop-drilling (mesmo motivo de `sharingState.ts`: a
+ * conexão precisa continuar viva mesmo trocando de rota). */
 export function useRtc(): GroupConnectionsState {
   const value = useContext(Context);
   if (!value) throw new Error("rtc-provider-required");

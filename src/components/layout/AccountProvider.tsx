@@ -56,10 +56,10 @@ export function useSession() {
   return session;
 }
 
-/** O backend não devolve nome/foto de outros membros (sem endpoint de
- * perfil público) — mostrar um rótulo curto derivado do próprio id em vez
- * de inventar um nome. Gap real, não mock: documentado no comentário do
- * `groupsApi.ts` e na issue #60. */
+/** Fallback só pra quando o backend de fato não tem nome salvo pro membro
+ * (conta só-senha que nunca editou o perfil) — desde que `getGroupForUser`
+ * passou a devolver `displayName`/`avatarUrl` reais (backend, gap da issue
+ * #70 nunca coberto aqui), a maioria dos membros usa o nome de verdade. */
 function memberLabel(userId: string): string {
   return userId.length > 10 ? `usuario ${userId.slice(-6)}` : userId;
 }
@@ -121,11 +121,18 @@ export function AccountProvider({ account, children }: { account: SessionUser; c
     apiGetGroup(selectedId).then(
       detail => {
         if (cancelled) return;
-        const members: User[] = detail.members.map(member =>
-          member.userId === account.id
-            ? user
-            : { id: member.userId, name: memberLabel(member.userId), initials: member.userId.slice(-2).toUpperCase(), online: false, current: false },
-        );
+        const members: User[] = detail.members.map(member => {
+          if (member.userId === account.id) return user;
+          const name = member.displayName || memberLabel(member.userId);
+          return {
+            id: member.userId,
+            name,
+            initials: name.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase(),
+            online: false,
+            current: false,
+            photoURL: member.avatarUrl,
+          };
+        });
         setSelectedDetail({ id: selectedId, members });
         setSelectedState({ status: "success" });
       },

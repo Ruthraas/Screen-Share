@@ -88,7 +88,7 @@ export function AppShell({
     <div className="app-window app-window--wide">
       <aside className="sidebar">
         <div className="nav-stack">
-          <button className={`nav-button ${route === "home" || route === "share" || route === "empty" ? "is-active" : ""}`} onClick={() => navigate("home")} title="inicio">
+          <button className={`nav-button ${route === "home" || route === "empty" ? "is-active" : ""}`} onClick={() => navigate("home")} title="inicio">
             <IconHome />
           </button>
           <button className={`nav-button ${route === "multi" || route === "room" ? "is-active" : ""}`} onClick={() => navigate("multi")} title="grupos">

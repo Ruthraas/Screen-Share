@@ -7,10 +7,10 @@ import { ErrorBoundary } from "./components/layout/ErrorBoundary";
 import { SplashScreen } from "./components/layout/SplashScreen";
 import { ErrorState, LoadingState } from "./components/ui/AsyncState";
 import { EmptyState } from "./pages/EmptyState";
+import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Profile } from "./pages/Profile";
 import { Settings } from "./pages/Settings";
-import { Share } from "./pages/Share";
 import { Groups } from "./pages/Groups";
 import { MultiScreen } from "./pages/MultiScreen";
 import "./styles.css";
@@ -113,16 +113,16 @@ function Workspace({ route, navigate, createOpen, setCreateOpen, paletteOpen, se
     if (groupsState.status !== "loading" && effectiveRoute !== route) navigate(effectiveRoute);
   }, [effectiveRoute, navigate, route, groupsState.status]);
 
-  // "multi" (lista de grupos) nunca é sobre UM grupo especifico — não
-  // mostra o titulo de um grupo só. "room" (a sala) é exatamente sobre
-  // isso, junto de "home"/"share".
-  const title = ["home", "share", "room"].includes(effectiveRoute) ? selected?.name : undefined;
+  // "multi" (lista de grupos) e "home" (resumo de conta, neutro) nunca são
+  // sobre UM grupo especifico — não mostram o titulo de um grupo só. "room"
+  // (a sala) é a única rota que é exatamente sobre isso.
+  const title = effectiveRoute === "room" ? selected?.name : undefined;
 
   return (
     <AppShell route={effectiveRoute} navigate={navigate} title={title}>
       {groupsState.status === "loading" ? <LoadingState label="carregando grupos" /> : null}
       {groupsState.status === "error" ? <ErrorState message={groupsState.error.message} onRetry={reloadGroups} /> : null}
-      {groupsState.status === "success" && (effectiveRoute === "home" || effectiveRoute === "share") ? (selected ? <Share navigate={navigate} /> : <EmptyState onCreate={() => setCreateOpen(true)} onJoin={() => setJoinOpen(true)} />) : null}
+      {groupsState.status === "success" && effectiveRoute === "home" ? <Home navigate={navigate} /> : null}
       {groupsState.status === "success" && effectiveRoute === "multi" ? <Groups onCreate={() => setCreateOpen(true)} onJoin={() => setJoinOpen(true)} onOpenRoom={() => navigate("room")} /> : null}
       {groupsState.status === "success" && effectiveRoute === "room" ? (selected ? <MultiScreen onBack={() => navigate("multi")} /> : null) : null}
       {groupsState.status === "success" && effectiveRoute === "settings" ? <Settings onEditProfile={() => navigate("profile")} /> : null}

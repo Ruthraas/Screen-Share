@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { IconPlus, IconSearch, IconSettings, IconShare, IconUsers } from "../ui/Icons";
 
 const ALL_ITEMS = [
-  { id: "share", label: "compartilhar tela", key: "enter", Icon: IconShare },
+  { id: "room", label: "compartilhar tela", key: "enter", Icon: IconShare },
   { id: "multi", label: "entrar em grupo", key: "g", Icon: IconUsers },
   { id: "create", label: "criar grupo", key: "n", Icon: IconPlus },
   { id: "settings", label: "configuracoes", key: ",", Icon: IconSettings },
