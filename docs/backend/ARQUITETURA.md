@@ -327,6 +327,26 @@ dos dois.
 - Passo a passo operacional em `docs/backend/HOSPEDAGEM.md` (reescrito
   pra Render nesta mesma data).
 
+**Adendo (issue #82, 2026-09-15): backend no ar em produção, todos os
+critérios de aceite validados contra o domínio real —
+`https://screenshare-backend-tj9j.onrender.com`.** Não é "deploy fez sem
+erro", é validação de verdade: `/health`/`/ready` públicos, ciclo completo
+registro→login→criar grupo→excluir grupo contra o banco remoto, um grupo
+sobrevivendo a um redeploy manual forçado (prova de persistência real no
+Turso, não no processo do Render), e login OAuth via Google ponta a ponta
+(consentimento real do usuário → callback → token emitido) — GitHub/
+Discord têm o redirect URI de produção cadastrado mas não foram testados
+com login real ainda (não bloqueia o critério, que pede só um provedor).
+
+- **Achado real, não hipotético**: a primeira tentativa de login Google
+  falhou com `redirect_uri_mismatch` mesmo com `OAUTH_REDIRECT_BASE_URL`
+  certo — o projeto do Google Cloud tem mais de um OAuth Client ID, e o
+  redirect de produção tinha sido cadastrado no client errado. Diagnosticado
+  inspecionando o header `Location` da resposta 302 do próprio `/start`
+  (`curl -D -`) pra confirmar exatamente qual `redirect_uri` o backend
+  estava enviando, em vez de adivinhar a partir da mensagem genérica do
+  Google.
+
 ## 3. Módulos e limites
 
 | Módulo | Responsabilidade | Issue de implementação |

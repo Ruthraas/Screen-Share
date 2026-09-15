@@ -675,13 +675,15 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     consentimento real dos três provedores OAuth (exige humano clicando —
     documentado issue a issue conforme apareceu) e capacidade sob carga
     real (isso é a #47, teste separado por design, não unitário).
-- **#82 — Hospedar o backend em produção (2026-09-14, EM ANDAMENTO)**:
-  banco migrado e validado contra serviço real; infraestrutura de deploy
-  pronta e commitada; falta só a ação final do usuário no dashboard do
-  Render (criar conta/serviço, preencher secrets) — não é algo que dê pra
-  automatizar (criação de conta em serviço de terceiro). Decisão completa
-  em `docs/backend/ARQUITETURA.md`, passo a passo em
-  `docs/backend/HOSPEDAGEM.md`.
+- **#82 — Hospedar o backend em produção (2026-09-14/15, CONCLUÍDO)**:
+  backend no ar em `https://screenshare-backend-tj9j.onrender.com`, todos
+  os critérios de aceite validados contra o domínio real (não só
+  configurados): `/health`/`/ready` públicos, registro/login por senha,
+  login OAuth via Google ponta a ponta (consentimento real → callback →
+  token emitido), grupo criado sobrevivendo a um redeploy manual forçado
+  (prova de persistência real no Turso, independente do processo do
+  Render). Decisão completa em `docs/backend/ARQUITETURA.md`, passo a
+  passo em `docs/backend/HOSPEDAGEM.md`.
   - **Banco migrado de `better-sqlite3` (SQLite local) pra
     `@libsql/client`/Turso (libSQL remoto)** — decisão trocada no mesmo
     dia da anterior por orçamento (time sem verba pra hospedagem paga).
@@ -702,14 +704,17 @@ rotear, e não decide layout/design — isso é escopo do frontend.
     `backend/fly.toml`/`backend/Dockerfile`/`backend/.dockerignore`
     (removidos). Sem Volume, sem `min_machines_running` fixo — nada mais
     preso a uma máquina só.
-  - Pendente pro usuário (documentado em `docs/backend/HOSPEDAGEM.md`):
-    criar conta no Render, deploy via Blueprint, preencher os secrets no
-    formulário (`SESSION_SIGNING_SECRET`/`PASSWORD_PEPPER` novos, nunca
-    os de dev), completar `OAUTH_REDIRECT_BASE_URL` com a URL real depois
-    do primeiro deploy, validar persistência forçando um redeploy manual,
-    e atualizar o redirect URI em cada provedor OAuth configurado
-    (`https://<domínio>/v1/auth/oauth/<provider>/callback`) — sem isso o
-    login OAuth quebra em produção mesmo com o backend no ar.
+  - **Achado real no caminho**: o Client ID do Google configurado no
+    Render não era o mesmo que tinha o redirect URI de produção cadastrado
+    — o projeto no Google Cloud tem mais de um OAuth Client ID, e o
+    redirect foi adicionado no client errado na primeira tentativa
+    (`redirect_uri_mismatch`, apesar do `redirect_uri` enviado pelo
+    backend estar correto — conferido direto no header `Location` da
+    resposta, sem adivinhar). Corrigido apontando pro client certo.
+  - **Restante opcional, não bloqueia o critério de aceite** (que pede só
+    "pelo menos um provedor"): GitHub/Discord já têm o redirect URI de
+    produção cadastrado, mas não foram testados ponta a ponta com login
+    real ainda — testar quando/se for útil, mesmo processo do Google.
 
 ## 3. Planejado — backlog de backend (26 issues, todas atribuídas a @ProgVictorPe)
 
