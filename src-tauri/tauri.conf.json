@@ -43,7 +43,7 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMTU5OEY2MzFERTczMUEKUldRYWM5NHg5cGdWTU1taEtPRUJ5YVFxNVlDcEs5Y3prZDIvenJhTlU3QVFhVzRXZDVPN0pUTVgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUwNTQ4NkRDMEJDM0REMDgKUldRSTNjTUwzSVpVVUE5VlQ5cEd0VlltT1VYc3d0Z0ZITm5yVFRRbjB0aDZhMTVOTXZMQUorQ0wK",
       "endpoints": [
         "https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json"
       ]
