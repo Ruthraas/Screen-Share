@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { MemberTile } from "../components/groups/MemberTile";
 import { useStreamSelection } from "../components/groups/useStreamSelection";
 import { useAccount } from "../components/layout/AccountProvider";
 import { useRtc } from "../components/rtc/RtcProvider";
-import { Avatar } from "../components/ui/Avatar";
 import { CaptureSourcePicker } from "../components/sharing/CaptureSourcePicker";
 import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { useLocalCapture } from "../components/sharing/useLocalCapture";
 import { Button } from "../components/ui/Button";
-import { IconChevronLeft, IconShare } from "../components/ui/Icons";
+import { IconChevronLeft } from "../components/ui/Icons";
 import type { CaptureFps, CaptureQuality } from "../services/captureClient";
 
 /**
@@ -24,15 +22,18 @@ import type { CaptureFps, CaptureQuality } from "../services/captureClient";
  * `member.sharing` (nunca era definido antes da issue #71 — sempre
  * `undefined`).
  *
- * Compartilhar a própria tela agora acontece aqui dentro, igual Discord:
- * seu próprio tile no mesmo grid dos outros membros (antes vivia separado
- * em `Share.tsx`, amarrado por acaso ao grupo selecionado — por isso a
- * antiga rota "home" nunca era realmente neutra). `useLocalCapture` é o
- * mesmo hook que `Share.tsx` usava, sem nenhuma mudança nele.
+ * Layout pedido pelo usuário, igual Discord: o palco da transmissão domina
+ * o centro, a sidebar de membros fica à direita (já era o layout que
+ * `ScreenViewer` sabia desenhar sozinho — `members`/`onSelect` — só que
+ * `MultiScreen` nunca passava isso antes, mantinha um grid separado em
+ * cima que empurrava o viewer pra baixo). Compartilhar a própria tela
+ * acontece pelo seu próprio item nessa mesma sidebar (antes vivia separado
+ * em `Share.tsx`, amarrado por acaso ao grupo selecionado). `useLocalCapture`
+ * é o mesmo hook que `Share.tsx` usava, sem nenhuma mudança nele.
  */
 export function MultiScreen({ onBack }: { onBack: () => void }) {
   const { selected, createInviteLink, user } = useAccount();
-  const { remoteStreams, sharingPeers, peerQuality, signalingStatus } = useRtc();
+  const { remoteStreams, sharingPeers, signalingStatus } = useRtc();
   const capture = useLocalCapture();
   const [pickerOpen, setPickerOpen] = useState(false);
   const members = (selected?.members ?? []).map(member => ({
@@ -85,48 +86,19 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
         <p>{activeIds.length} transmissoes ativas</p>
         <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
       </header>
-      <div className="multi-grid">
-        {members.map(member =>
-          member.id === user.id ? (
-            <button
-              key={member.id}
-              className={`member-tile ${memberId === member.id ? "is-selected" : ""} ${capture.status === "active" ? "is-sharing" : ""}`}
-              type="button"
-              onClick={() => handleSelectTile(member.id)}
-            >
-              {capture.status === "active" ? <span className="live-dot" /> : null}
-              <div className="member-tile__center">
-                {capture.status === "active" ? <IconShare /> : <Avatar user={user} />}
-                <strong>{capture.status === "starting" ? "iniciando..." : "voce"}</strong>
-              </div>
-            </button>
-          ) : (
-            <MemberTile
-              key={member.id}
-              member={member}
-              selected={memberId === member.id}
-              quality={peerQuality.get(member.id)}
-              onSelect={() => handleSelectTile(member.id)}
-            />
-          ),
-        )}
-      </div>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
       {capture.error ? <p className="muted" role="alert">{capture.error}</p> : null}
       <div className="multi-viewer-area">
-        {viewingMember && viewingStream ? (
-          <ScreenViewer
-            user={viewingMember}
-            stream={viewingStream}
-            loading={viewingSelf && !capture.hasFrame}
-            onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
-            onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
-          />
-        ) : (
-          <p className="muted">
-            {signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
-          </p>
-        )}
+        <ScreenViewer
+          user={viewingMember}
+          stream={viewingStream}
+          members={members}
+          loading={viewingSelf && !capture.hasFrame}
+          emptyMessage={signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
+          onSelect={member => handleSelectTile(member.id)}
+          onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
+          onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
+        />
       </div>
       <CaptureSourcePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onStart={(sourceId, quality, audioEnabled, fps) => void handleStartSharing(sourceId, quality, audioEnabled, fps)} />
     </section>
