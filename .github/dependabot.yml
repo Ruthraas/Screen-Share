@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Frontend (raiz do repo — package.json)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  # Backend (backend/package.json — projeto npm separado)
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  # Cargo (src-tauri/Cargo.toml)
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Actions usadas nos workflows (.github/workflows/*.yml)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

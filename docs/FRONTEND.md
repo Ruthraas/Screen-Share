@@ -96,3 +96,41 @@ Ambos os caminhos deixam de existir depois de uma limpeza local
 (`cargo clean`, remover `src-tauri/target/`) e são recriados do zero pelo
 build — não são versionados no Git. No CI, o workflow publica os dois como
 artifact `screenshare-windows` do run (retenção de 14 dias).
+
+## 6. Captura de tela e áudio — decisões e achados reais
+
+Captura 100% nativa via Rust, decisão explícita do produto: **nunca
+`getDisplayMedia`/API de navegador**, só o app empacotado.
+
+- `src-tauri/src/capture.rs`: Windows Graphics Capture (crate `windows-capture`)
+  enumera monitores/janelas (`list_capture_sources`, filtrando janelas
+  "cloaked" pelo DWM que nunca conseguem ser capturadas), inicia/para uma
+  sessão (`start_capture`/`stop_capture`) e gera miniaturas
+  (`capture_thumbnail`). Cada frame é redimensionado conforme a qualidade
+  escolhida, tem o canal alfa descartado e é codificado em JPEG, emitido pro
+  frontend via evento Tauri (`capture-frame`). O fps é controlado no próprio
+  WGC via `MinimumUpdateIntervalSettings`.
+- `src/components/sharing/useLocalCapture.ts`: escuta os eventos, desenha
+  cada frame num `<canvas>` oculto e usa `canvas.captureStream(fps)` — o
+  `MediaStream` resultante é o que `ScreenViewer` consome, sem contrato
+  especial.
+- `src-tauri/src/audio.rs`: áudio do sistema (loopback, `wasapi`), opcional,
+  nunca microfone.
+- Transmissão pros outros participantes: `src/components/rtc/` —
+  `RTCPeerConnection` por participante via `useGroupConnections.ts`,
+  sinalização pelo `/ws` do backend, credenciais TURN reais
+  (`POST /v1/turn-credentials`), indicador de qualidade via `getStats()`.
+
+**Achados que já causaram retrabalho — não repetir:**
+
+- **JPEG não aceita canal alfa.** Todo buffer de captura de tela vem RGBA —
+  descartar o alfa antes de `JpegEncoder::encode`, senão falha silenciosamente
+  (causou um bug real de "tela cinza").
+- **Toda chamada WinRT/COM roda em thread nova** (`run_on_fresh_thread` em
+  `capture.rs`) — o WebView2 do Tauri já inicializa COM em modo STA nas
+  threads de comando, e `windows-capture` precisa de MTA.
+- **API `core:event` do Tauri v2 exige permissão explícita** em
+  `src-tauri/capabilities/*.json` — comandos `#[tauri::command]` próprios não
+  precisam, só APIs "core" do lado do frontend (ex. `listen()`).
+- **Sem microfone, sem chat de voz.** Áudio do sistema (loopback) é o único
+  áudio permitido, sempre opcional — decisão de produto, não técnica.
