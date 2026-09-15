@@ -8,9 +8,13 @@ import { openDatabase } from "./connection.js";
 
 // No Windows, o binding nativo do libSQL solta o handle do arquivo (e dos
 // sidecars -wal/-shm) um instante depois de close() retornar — rmSync
-// imediato às vezes esbarra em EPERM. Não acontece em produção (nada lá
-// apaga o arquivo do banco); é só limpeza de teste, por isso a retentativa
-// curta em vez de mudar o comportamento de openDatabase/close.
+// imediato às vezes esbarra em EPERM (achado local) ou EBUSY (achado só no
+// runner do GitHub Actions — mesma causa, código de erro diferente
+// dependendo de timing/versão do Windows). Não acontece em produção (nada
+// lá apaga o arquivo do banco); é só limpeza de teste, por isso a
+// retentativa curta em vez de mudar o comportamento de openDatabase/close.
+const TRANSIENT_WINDOWS_LOCK_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+
 async function rmDirWithRetry(dir: string): Promise<void> {
   const maxAttempts = 10;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -18,7 +22,7 @@ async function rmDirWithRetry(dir: string): Promise<void> {
       rmSync(dir, { recursive: true, force: true });
       return;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EPERM") throw err;
+      if (!TRANSIENT_WINDOWS_LOCK_CODES.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
       if (attempt === maxAttempts - 1) {
         // Best-effort: é só um diretório temporário de teste, o SO limpa
         // sozinho eventualmente — não vale falhar o teste por causa disso
