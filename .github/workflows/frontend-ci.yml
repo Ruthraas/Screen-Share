@@ -78,7 +78,7 @@ jobs:
 
       - name: Publicar artefatos do bundle
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshare-windows
           path: |
@@ -89,7 +89,7 @@ jobs:
 
       - name: Publicar capturas do smoke test (diagnóstico em caso de falha)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-test-screenshots
           path: artifacts/ui/
