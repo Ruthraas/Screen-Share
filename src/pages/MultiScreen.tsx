@@ -6,7 +6,7 @@ import { CaptureSourcePicker } from "../components/sharing/CaptureSourcePicker";
 import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { useLocalCapture } from "../components/sharing/useLocalCapture";
 import { Button } from "../components/ui/Button";
-import { IconChevronLeft } from "../components/ui/Icons";
+import { IconChevronLeft, IconPlayerStop, IconShare } from "../components/ui/Icons";
 import type { CaptureFps, CaptureQuality } from "../services/captureClient";
 
 /**
@@ -26,10 +26,13 @@ import type { CaptureFps, CaptureQuality } from "../services/captureClient";
  * o centro, a sidebar de membros fica à direita (já era o layout que
  * `ScreenViewer` sabia desenhar sozinho — `members`/`onSelect` — só que
  * `MultiScreen` nunca passava isso antes, mantinha um grid separado em
- * cima que empurrava o viewer pra baixo). Compartilhar a própria tela
- * acontece pelo seu próprio item nessa mesma sidebar (antes vivia separado
- * em `Share.tsx`, amarrado por acaso ao grupo selecionado). `useLocalCapture`
- * é o mesmo hook que `Share.tsx` usava, sem nenhuma mudança nele.
+ * cima que empurrava o viewer pra baixo). `useLocalCapture` é o mesmo hook
+ * que `Share.tsx` usava (removida), sem nenhuma mudança nele.
+ *
+ * Botão "compartilhar tela" no cabeçalho (achado real testando: clicar no
+ * próprio avatar na sidebar pra iniciar não era nada óbvio, sem nenhum
+ * rótulo indicando essa ação) — a sidebar continua servindo pra ver a
+ * tela de quem já está transmitindo, iniciar/parar é só pelo botão.
  */
 export function MultiScreen({ onBack }: { onBack: () => void }) {
   const { selected, createInviteLink, user } = useAccount();
@@ -66,14 +69,6 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
     await capture.stop();
   }
 
-  function handleSelectTile(memberIdClicked: string) {
-    if (memberIdClicked === user.id && capture.status !== "active") {
-      setPickerOpen(true);
-      return;
-    }
-    setMemberId(memberIdClicked);
-  }
-
   if (!selected) return null;
   const viewingMember = members.find(member => member.id === memberId);
   const viewingSelf = memberId === user.id;
@@ -84,7 +79,16 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
       <header>
         <Button variant="ghost" icon={<IconChevronLeft />} onClick={onBack}>todos os grupos</Button>
         <p>{activeIds.length} transmissoes ativas</p>
-        <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
+        <div className="multi-panel-actions">
+          {capture.status === "active" ? (
+            <Button variant="danger" icon={<IconPlayerStop />} onClick={() => void handleStopSharing()}>parar transmissao</Button>
+          ) : (
+            <Button icon={<IconShare />} disabled={capture.status === "starting"} onClick={() => setPickerOpen(true)}>
+              {capture.status === "starting" ? "iniciando..." : "compartilhar tela"}
+            </Button>
+          )}
+          <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
+        </div>
       </header>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
       {capture.error ? <p className="muted" role="alert">{capture.error}</p> : null}
@@ -95,7 +99,7 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
           members={members}
           loading={viewingSelf && !capture.hasFrame}
           emptyMessage={signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
-          onSelect={member => handleSelectTile(member.id)}
+          onSelect={member => setMemberId(member.id)}
           onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
           onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
         />
