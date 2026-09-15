@@ -113,19 +113,21 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
       </div>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
       {capture.error ? <p className="muted" role="alert">{capture.error}</p> : null}
-      {viewingMember && viewingStream ? (
-        <ScreenViewer
-          user={viewingMember}
-          stream={viewingStream}
-          loading={viewingSelf && !capture.hasFrame}
-          onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
-          onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
-        />
-      ) : (
-        <p className="muted">
-          {signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
-        </p>
-      )}
+      <div className="multi-viewer-area">
+        {viewingMember && viewingStream ? (
+          <ScreenViewer
+            user={viewingMember}
+            stream={viewingStream}
+            loading={viewingSelf && !capture.hasFrame}
+            onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
+            onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
+          />
+        ) : (
+          <p className="muted">
+            {signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
+          </p>
+        )}
+      </div>
       <CaptureSourcePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onStart={(sourceId, quality, audioEnabled, fps) => void handleStartSharing(sourceId, quality, audioEnabled, fps)} />
     </section>
   );
