@@ -5,12 +5,16 @@
 <p align="center"><strong>Compartilhamento de tela nativo, leve e privado para grupos pequenos no Windows.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/Ruthraas/Screen-Share/releases/latest"><img src="https://img.shields.io/github/v/release/Ruthraas/Screen-Share?label=release&color=2ea44f" alt="Release"></a>
   <a href="https://github.com/Ruthraas/Screen-Share/actions/workflows/backend-ci.yml"><img src="https://github.com/Ruthraas/Screen-Share/actions/workflows/backend-ci.yml/badge.svg?branch=main" alt="Backend CI"></a>
   <a href="https://github.com/Ruthraas/Screen-Share/actions/workflows/frontend-ci.yml"><img src="https://github.com/Ruthraas/Screen-Share/actions/workflows/frontend-ci.yml/badge.svg?branch=main" alt="Frontend CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL v3"></a>
-  <a href="https://github.com/Ruthraas/Screen-Share/releases/latest"><img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"></a>
+  <img src="https://img.shields.io/badge/repositório-privado-critical" alt="Repositório privado">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform">
 </p>
+
+> Repositório privado, código fechado. Os badges de release/licença
+> públicos saíram daqui de propósito, eles dependem de um repositório
+> público pra funcionar. Distribuição pros usuários finais é pelo site
+> (`ScreenShare-Site/`), não por este README.
 
 O ScreenShare nasceu de uma ideia simples: compartilhar a tela com um grupo
 pequeno (família, amigos, um time) não deveria exigir Discord, Zoom ou
@@ -33,10 +37,10 @@ verifica a assinatura e instala a versão nova sem você precisar fazer nada.
 
 ## Instalar
 
-Pega o instalador mais recente na página de
-[**Releases**](https://github.com/Ruthraas/Screen-Share/releases/latest)
-(`ScreenShare_<versão>_x64-setup.exe`). Precisa de Windows 10 ou 11 x64 com
-WebView2, que já vem instalado em qualquer Windows atualizado.
+Pra quem tem acesso a este repositório, o instalador mais recente fica na
+página de [**Releases**](https://github.com/Ruthraas/Screen-Share/releases/latest)
+(`ScreenShare_<versão>_x64-setup.exe`). O download público, pra qualquer
+usuário final, é pelo site.
 
 ## Como é feito por dentro
 
@@ -73,15 +77,14 @@ backend precisa estar rodando à parte (veja o `README`/`.env.example` dentro
 de `backend/`). O passo a passo completo de build, testes e empacotamento
 está em [`docs/FRONTEND.md`](docs/FRONTEND.md).
 
-## Contribuindo
+## Como trabalhamos
 
-Issues e pull requests são bem-vindos. Ninguém, nem os próprios
-mantenedores, commita direto na `main`: toda mudança entra por pull
-request, revisada, e só é mergeada com os testes automatizados passando
-(são os badges de CI lá em cima). Antes de abrir um PR, dá uma lida no
-[`CONTRIBUTING.md`](CONTRIBUTING.md), ele explica o fluxo de trabalho, onde
-fica a fronteira entre frontend e backend, e o que esperamos de um PR pra
-aceitar.
+Repositório privado, só os dois mantenedores têm acesso. Ainda assim,
+ninguém commita direto na `main` sem pensar: toda mudança relevante entra
+por pull request, revisada, e só é mergeada com os testes automatizados
+passando (são os badges de CI lá em cima). O fluxo de trabalho completo, e
+onde fica a fronteira entre frontend e backend, está em
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Créditos
 
@@ -93,6 +96,5 @@ ScreenShare simplesmente não existiria no ar sem o trabalho dele.
 
 ## Licença
 
-Este projeto está sob a [GPL-3.0](LICENSE). Qualquer um pode usar, estudar,
-modificar e redistribuir o código, desde que qualquer trabalho derivado
-continue sob a mesma licença.
+Código fechado, todos os direitos reservados. Detalhes em
+[`LICENSE`](LICENSE).
