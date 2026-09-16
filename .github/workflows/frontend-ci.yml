@@ -60,6 +60,7 @@ jobs:
         with:
           node-version-file: screen-share/.nvmrc
           cache: npm
+          cache-dependency-path: screen-share/package-lock.json
 
       - name: Instalar dependências
         run: npm ci
