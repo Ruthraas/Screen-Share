@@ -9,39 +9,31 @@ name: Frontend CI
 # Só Windows por agora, mesmo critério do backend-ci.yml: é o ambiente de
 # desenvolvimento real (Ruthraas) e o único validado até aqui.
 
-# Issue restruturação: repositório virou monorepo (screen-share/ = app,
-# screen-share-site/ = site, repo próprio, nunca entra aqui) — todo
-# caminho abaixo passou a ter o prefixo screen-share/. Passos `run:` usam
-# `defaults.run.working-directory` pra não precisar prefixar cada um;
-# *inputs* de action (`uses:`, ex. node-version-file/workspaces/path de
-# upload-artifact) não respeitam esse default, então esses continuam
-# escritos por extenso com o prefixo.
-
 on:
   pull_request:
     paths:
-      - "screen-share/src/**"
-      - "screen-share/src-tauri/**"
-      - "screen-share/scripts/**"
-      - "screen-share/tests/frontend/**"
-      - "screen-share/package.json"
-      - "screen-share/package-lock.json"
-      - "screen-share/vite.config.ts"
-      - "screen-share/index.html"
-      - "screen-share/oauth.html"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/**"
+      - "tests/frontend/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "oauth.html"
       - ".github/workflows/frontend-ci.yml"
   push:
     branches: [main]
     paths:
-      - "screen-share/src/**"
-      - "screen-share/src-tauri/**"
-      - "screen-share/scripts/**"
-      - "screen-share/tests/frontend/**"
-      - "screen-share/package.json"
-      - "screen-share/package-lock.json"
-      - "screen-share/vite.config.ts"
-      - "screen-share/index.html"
-      - "screen-share/oauth.html"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/**"
+      - "tests/frontend/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "oauth.html"
       - ".github/workflows/frontend-ci.yml"
 
 jobs:
@@ -50,17 +42,13 @@ jobs:
     # o job de mesmo nome lá, indistinguível numa lista de checks de PR.
     name: Frontend build-and-test
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: screen-share
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: screen-share/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: screen-share/package-lock.json
 
       - name: Instalar dependências
         run: npm ci
@@ -74,7 +62,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: screen-share/src-tauri
+          workspaces: src-tauri
 
       - name: Testes Rust da ponte desktop
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
@@ -94,8 +82,8 @@ jobs:
         with:
           name: screenshare-windows
           path: |
-            screen-share/src-tauri/target/release/ScreenShare.exe
-            screen-share/src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/ScreenShare.exe
+            src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
           retention-days: 14
 
@@ -104,6 +92,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-test-screenshots
-          path: screen-share/artifacts/ui/
+          path: artifacts/ui/
           if-no-files-found: ignore
           retention-days: 14

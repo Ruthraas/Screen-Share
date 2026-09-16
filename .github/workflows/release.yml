@@ -18,21 +18,7 @@ name: Release
 # passar — "Release incompleta não é marcada como estável").
 #
 # Issue #48 (frontend, @Ruthraas) consome o manifesto publicado aqui:
-# https://github.com/Ruthraas/Screen-Share-Releases/releases/latest/download/latest.json
-#
-# Issue restruturação: repositório virou monorepo (screen-share/ = app) —
-# job roda com working-directory screen-share por padrão; tauri-action
-# precisa do input projectPath explícito (não respeita defaults.run).
-#
-# Issue código fechado: Screen-Share virou privado, então
-# releases/latest/download/... deixou de ser alcançável publicamente — o
-# updater (chamada anônima, sem autenticação) sempre falhava, atualizado ou
-# não (achado real, reportado pelo usuário). Releases passam a ser
-# publicadas num repositório PÚBLICO separado, só com os artefatos —
-# Screen-Share-Releases nunca tem código fonte. Precisa de um Personal
-# Access Token com permissão de escrita nesse repo (RELEASES_REPO_TOKEN nos
-# secrets) — o GITHUB_TOKEN automático só enxerga o repositório onde o
-# workflow roda, não dá pra publicar em outro com ele.
+# https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json
 
 on:
   push:
@@ -45,9 +31,6 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: screen-share
     steps:
       - uses: actions/checkout@v4
 
@@ -56,9 +39,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: screen-share/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: screen-share/package-lock.json
 
       - name: Instalar dependências
         run: npm ci
@@ -66,7 +48,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: screen-share/src-tauri
+          workspaces: src-tauri
 
       - name: Testes Rust da ponte desktop (sanidade antes de publicar)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
@@ -75,13 +57,10 @@ jobs:
         id: tauri-release
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          owner: Ruthraas
-          repo: Screen-Share-Releases
-          projectPath: screen-share
           tagName: ${{ github.ref_name }}
           # Nome visível do release fixo (decisão de produto) — a versão
           # continua existindo na tag em si (github.ref_name), só não
@@ -102,12 +81,11 @@ jobs:
 
       - name: Gerar e anexar checksums (SHA256) dos artefatos
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-          GH_REPO: Ruthraas/Screen-Share-Releases
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/gerar-checksums-release.mjs "${{ github.ref_name }}"
 
       - name: Publicar release (sair de rascunho — só chega aqui se tudo acima passou)
         if: success()
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "Ruthraas/Screen-Share-Releases"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"

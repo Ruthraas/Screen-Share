@@ -27,25 +27,6 @@ release, mas o `tauri-action` não consegue assinar — os artefatos saem sem
 `.sig`, e a issue #48 (validação de assinatura no cliente) vai rejeitar o
 update. Configure antes do primeiro uso real.
 
-**Segundo pré-requisito (desde que o código fechou, issue código fechado):**
-`Screen-Share` virou privado, então a URL pública de release
-(`releases/latest/download/...`) parou de existir — o updater (chamada
-anônima, sem login) sempre falhava, atualizado ou não. As releases passaram
-a ser publicadas num repositório **separado e público**, só com os
-artefatos, sem nenhum código fonte:
-[`Ruthraas/Screen-Share-Releases`](https://github.com/Ruthraas/Screen-Share-Releases).
-
-O `GITHUB_TOKEN` automático do workflow só enxerga o repositório onde ele
-roda (`Screen-Share`) — publicar em outro repositório exige um token à
-parte:
-
-- Gere um **Personal Access Token (fine-grained)** em
-  `github.com/settings/tokens?type=beta`, escopo só pro repositório
-  `Screen-Share-Releases`, permissão `Contents: Read and write`.
-- `Settings → Secrets and variables → Actions → New repository secret`
-  (no repositório `Screen-Share`, privado — é de lá que o workflow roda)
-  → `RELEASES_REPO_TOKEN`.
-
 ## Passo a passo
 
 1. Decida a nova versão (semver: `MAJOR.MINOR.PATCH`).
@@ -67,7 +48,7 @@ parte:
    - `ScreenShare.exe` (binário puro)
    - instalador NSIS (`ScreenShare_<versão>_x64-setup.exe`)
    - `latest.json` (manifesto do updater — issue #48 consome
-     `https://github.com/Ruthraas/Screen-Share-Releases/releases/latest/download/latest.json`)
+     `https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json`)
    - `checksums.txt` (SHA256 de cada artefato)
 
 ## O que interrompe o workflow (de propósito)
