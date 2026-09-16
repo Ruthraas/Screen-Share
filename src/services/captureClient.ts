@@ -36,11 +36,23 @@ const CAPTURE_ERROR_MESSAGES: Record<string, string> = {
 
 /** Extrai uma mensagem legivel de qualquer coisa que um `invoke()` rejeitado
  * possa lançar: um `Error` de verdade, ou — o caso comum aqui, já que os
- * comandos Rust devolvem `Err(String)` — a string crua do código. */
+ * comandos Rust devolvem `Err(String)` — a string crua do código.
+ *
+ * Alguns códigos (ex. `capture-start-failed`) vêm com um detalhe real do
+ * Windows grudado depois de ":" — em release (`windows_subsystem =
+ * "windows"`) o stderr do lado Rust não tem console nenhum pra aparecer,
+ * então sem isso o motivo de verdade nunca chega em lugar nenhum visível
+ * pra quem não builda em modo debug (achado real: só assim dá pra
+ * diagnosticar uma falha que só acontece numa máquina que não é a nossa). */
 export function captureErrorMessage(error: unknown): string {
-  const code = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
-  if (!code) return "nao foi possivel completar a operacao de captura";
-  return CAPTURE_ERROR_MESSAGES[code] ?? `nao foi possivel completar a operacao de captura (${code})`;
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
+  if (!raw) return "nao foi possivel completar a operacao de captura";
+  const separatorIndex = raw.indexOf(":");
+  const code = separatorIndex === -1 ? raw : raw.slice(0, separatorIndex);
+  const detail = separatorIndex === -1 ? "" : raw.slice(separatorIndex + 1).trim();
+  const friendly = CAPTURE_ERROR_MESSAGES[code];
+  if (!friendly) return `nao foi possivel completar a operacao de captura (${raw})`;
+  return detail ? `${friendly}: ${detail}` : friendly;
 }
 
 export async function listCaptureSources(): Promise<CaptureSource[]> {

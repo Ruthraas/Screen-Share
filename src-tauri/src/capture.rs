@@ -322,7 +322,13 @@ pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u
             );
             ScreenCapture::start_free_threaded(settings).map_err(|error| {
                 eprintln!("[capture] start_free_threaded (monitor) falhou: {error:?}");
-                "capture-start-failed".to_string()
+                // O detalhe vai junto do código (separado por ":"), não só no
+                // eprintln! — em build de release (`windows_subsystem =
+                // "windows"`) o stderr não tem console nenhum pra aparecer,
+                // então sem isso o motivo real do erro fica invisível pra
+                // sempre pra quem não builda em modo debug. `captureClient.ts`
+                // sabe separar o código do detalhe.
+                format!("capture-start-failed:{error:?}")
             })
         } else if let Some(hwnd_str) = source_id.strip_prefix("window:") {
             let hwnd: isize = hwnd_str.parse().map_err(|_| "capture-source-not-found".to_string())?;
@@ -342,7 +348,7 @@ pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u
             );
             ScreenCapture::start_free_threaded(settings).map_err(|error| {
                 eprintln!("[capture] start_free_threaded (window) falhou: {error:?}");
-                "capture-start-failed".to_string()
+                format!("capture-start-failed:{error:?}")
             })
         } else {
             Err("capture-source-not-found".into())
