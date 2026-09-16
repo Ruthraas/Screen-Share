@@ -37,10 +37,11 @@ verifica a assinatura e instala a versão nova sem você precisar fazer nada.
 
 ## Instalar
 
-Pra quem tem acesso a este repositório, o instalador mais recente fica na
-página de [**Releases**](https://github.com/Ruthraas/Screen-Share/releases/latest)
-(`ScreenShare_<versão>_x64-setup.exe`). O download público, pra qualquer
-usuário final, é pelo site.
+O instalador mais recente (`ScreenShare_<versão>_x64-setup.exe`) fica na
+página de [**Releases**](https://github.com/Ruthraas/Screen-Share-Releases/releases/latest)
+de um repositório separado e público, só com os artefatos publicados, sem
+nenhum código fonte — o código deste repositório continua fechado. O
+download pensado pro usuário final, com uma cara melhor, é pelo site.
 
 ## Como é feito por dentro
 

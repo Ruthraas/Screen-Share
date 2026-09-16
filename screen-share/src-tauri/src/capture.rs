@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame;
-use windows_capture::graphics_capture_api::InternalCaptureControl;
+use windows_capture::graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl};
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -166,6 +166,25 @@ fn update_interval_for_fps(fps: u32) -> MinimumUpdateIntervalSettings {
     MinimumUpdateIntervalSettings::Custom(Duration::from_secs_f64(1.0 / clamp_fps(fps) as f64))
 }
 
+/// Achado real (relatado pelo Victor, `GraphicsCaptureApiError(BorderConfigUnsupported)`):
+/// pedir `WithoutBorder` incondicionalmente falha em qualquer sistema onde a
+/// API de captura não suporta trocar a configuração da borda amarela do WGC
+/// — o próprio crate documenta isso via `is_border_settings_supported()`.
+/// `Default` nunca falha por esse motivo (só entra nesse erro quando o valor
+/// pedido é diferente de `Default` e o suporte não existe). Checagem cacheada
+/// (`OnceLock`) porque é fixa pra uma instalação do Windows — não faz
+/// sentido reconsultar a cada `start_capture`/`capture_thumbnail`.
+fn draw_border_settings() -> DrawBorderSettings {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    let supported = *SUPPORTED.get_or_init(|| {
+        GraphicsCaptureApi::is_border_settings_supported().unwrap_or_else(|error| {
+            eprintln!("[capture] is_border_settings_supported falhou, assumindo sem suporte: {error:?}");
+            false
+        })
+    });
+    if supported { DrawBorderSettings::WithoutBorder } else { DrawBorderSettings::Default }
+}
+
 /// `as_raw_buffer` do `windows-capture` pode incluir padding por linha
 /// (`row_pitch` maior que `width * 4`, comum quando a largura nao e multipla
 /// de 256 bytes) — remonta um buffer RGBA compacto (sem padding), o formato
@@ -313,7 +332,7 @@ pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u
             let settings = Settings::new(
                 monitor,
                 CursorCaptureSettings::Default,
-                DrawBorderSettings::WithoutBorder,
+                draw_border_settings(),
                 SecondaryWindowSettings::Default,
                 update_interval,
                 DirtyRegionSettings::Default,
@@ -339,7 +358,7 @@ pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u
             let settings = Settings::new(
                 window,
                 CursorCaptureSettings::Default,
-                DrawBorderSettings::WithoutBorder,
+                draw_border_settings(),
                 SecondaryWindowSettings::Default,
                 update_interval,
                 DirtyRegionSettings::Default,
@@ -405,7 +424,7 @@ pub fn capture_thumbnail(source_id: String) -> Result<String, String> {
         let settings = Settings::new(
             item,
             CursorCaptureSettings::Default,
-            DrawBorderSettings::WithoutBorder,
+            draw_border_settings(),
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
