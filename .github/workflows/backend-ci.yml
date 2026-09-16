@@ -10,15 +10,19 @@ name: Backend CI
 # Linux fica pra depois que o fluxo no Windows estiver redondo; ver
 # docs/BACKEND.md antes de reativar o matrix com ubuntu-latest.
 
+# Issue restruturação: repositório virou monorepo (screen-share/ = app,
+# screen-share-site/ = site, repo próprio, nunca entra aqui) — todo
+# caminho abaixo passou a ter o prefixo screen-share/.
+
 on:
   pull_request:
     paths:
-      - "backend/**"
+      - "screen-share/backend/**"
       - ".github/workflows/backend-ci.yml"
   push:
     branches: [main]
     paths:
-      - "backend/**"
+      - "screen-share/backend/**"
       - ".github/workflows/backend-ci.yml"
 
 jobs:
@@ -30,15 +34,15 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: screen-share/backend
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: backend/.nvmrc
+          node-version-file: screen-share/backend/.nvmrc
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: screen-share/backend/package-lock.json
 
       - name: Instalar dependências (sem compilar nativo — ver backend/.npmrc)
         run: npm ci

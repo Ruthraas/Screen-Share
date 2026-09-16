@@ -1,12 +1,20 @@
+# screen-share-site/ é um repositorio Git PROPRIO e separado (decisao do
+# usuario) - nunca deve ser rastreado por este repositorio, mesmo que a
+# pasta exista aqui do lado. Fica de fora de proposito, nao e descuido.
+screen-share-site/
+
+# Raiz do monorepo (screen-share/ = app) — cada subprojeto tem seu próprio
+# .gitignore mais específico; este aqui é só uma rede de segurança contra
+# artefato de build/dependência instalado sem querer direto na raiz
+# (achado real: node_modules/dist ficaram soltos aqui depois de uma
+# reorganização manual de pastas, sem serem pegos por nenhum .gitignore
+# porque cada um só cobre a própria subpasta pra baixo).
 node_modules/
 dist/
+build/
+.next/
 *.tsbuildinfo
-tmp-*.png
-src-tauri/target/
 .env
 .env.local
-artifacts/
-backend/data/
-backend/secrets/
-backend/reports/
-src-tauri/icons/SpotifySetup.exe
+.DS_Store
+Thumbs.db

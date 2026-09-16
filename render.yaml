@@ -6,19 +6,24 @@
 #
 # Uso: no dashboard do Render, "New +" -> "Blueprint", conectar este repo —
 # o Render lê este arquivo automaticamente por estar na raiz do repositório
-# (`rootDir` abaixo aponta o serviço em si pra dentro de backend/, sem mudar
-# onde o render.yaml precisa morar). O Render cria o serviço e pede, um a
-# um, o valor de cada envVar com `sync: false` abaixo — nenhum segredo fica
-# neste arquivo, que é commitado no Git. Campo opcional sem valor pra sua
-# configuração (ex. um provedor OAuth que você não usa) pode ficar em
-# branco no assistente e ser preenchido depois na aba Environment.
+# (`rootDir` abaixo aponta o serviço em si pra dentro de screen-share/backend,
+# sem mudar onde o render.yaml precisa morar). O Render cria o serviço e
+# pede, um a um, o valor de cada envVar com `sync: false` abaixo — nenhum
+# segredo fica neste arquivo, que é commitado no Git. Campo opcional sem
+# valor pra sua configuração (ex. um provedor OAuth que você não usa) pode
+# ficar em branco no assistente e ser preenchido depois na aba Environment.
+#
+# Repositório virou monorepo (screen-share/ = app) depois do deploy inicial
+# — se o serviço já existia no Render antes dessa reorganização, pode ser
+# necessário forçar um "Manual Sync" do Blueprint no dashboard do Render
+# pra ele reconhecer o rootDir novo.
 services:
   - type: web
     name: screenshare-backend
     runtime: node
     plan: free
     region: virginia # mesma região do banco Turso (aws-us-east-1) — minimiza a latência backend<->banco
-    rootDir: backend
+    rootDir: screen-share/backend
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health

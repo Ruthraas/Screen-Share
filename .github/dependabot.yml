@@ -1,8 +1,9 @@
 version: 2
 updates:
-  # Frontend (raiz do repo — package.json)
+  # Frontend (screen-share/package.json) — monorepo: app vive em
+  # screen-share/, screen-share-site/ é repositório próprio, separado.
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/screen-share"
     schedule:
       interval: "weekly"
     groups:
@@ -11,9 +12,9 @@ updates:
           - "*"
     open-pull-requests-limit: 5
 
-  # Backend (backend/package.json — projeto npm separado)
+  # Backend (screen-share/backend/package.json — projeto npm separado)
   - package-ecosystem: "npm"
-    directory: "/backend"
+    directory: "/screen-share/backend"
     schedule:
       interval: "weekly"
     groups:
@@ -22,9 +23,9 @@ updates:
           - "*"
     open-pull-requests-limit: 5
 
-  # Cargo (src-tauri/Cargo.toml)
+  # Cargo (screen-share/src-tauri/Cargo.toml)
   - package-ecosystem: "cargo"
-    directory: "/src-tauri"
+    directory: "/screen-share/src-tauri"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

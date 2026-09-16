@@ -19,6 +19,10 @@ name: Release
 #
 # Issue #48 (frontend, @Ruthraas) consome o manifesto publicado aqui:
 # https://github.com/Ruthraas/Screen-Share/releases/latest/download/latest.json
+#
+# Issue restruturação: repositório virou monorepo (screen-share/ = app) —
+# job roda com working-directory screen-share por padrão; tauri-action
+# precisa do input projectPath explícito (não respeita defaults.run).
 
 on:
   push:
@@ -31,6 +35,9 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: screen-share
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +46,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version-file: screen-share/.nvmrc
           cache: npm
 
       - name: Instalar dependências
@@ -48,7 +55,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: screen-share/src-tauri
 
       - name: Testes Rust da ponte desktop (sanidade antes de publicar)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
@@ -61,6 +68,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          projectPath: screen-share
           tagName: ${{ github.ref_name }}
           # Nome visível do release fixo (decisão de produto) — a versão
           # continua existindo na tag em si (github.ref_name), só não
