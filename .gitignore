@@ -10,3 +10,6 @@ backend/data/
 backend/secrets/
 backend/reports/
 src-tauri/icons/SpotifySetup.exe
+
+# Site separado (repositório próprio, nunca deste)
+screen-share-site/
