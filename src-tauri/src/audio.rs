@@ -16,6 +16,9 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 static STOP: AtomicBool = AtomicBool::new(false);
 static THREAD: OnceLock<Mutex<Option<JoinHandle<()>>>> = OnceLock::new();
 
+// Recupera de "poison" em vez de propagar o panic (ver comentario igual em
+// capture.rs `running()`) — nunca deveria travar todo comando de audio
+// futuro por causa de um panic acidental segurando este lock antes.
 fn thread_slot() -> &'static Mutex<Option<JoinHandle<()>>> {
     THREAD.get_or_init(|| Mutex::new(None))
 }
@@ -93,14 +96,14 @@ pub fn start_system_audio_capture(app: AppHandle) -> Result<(), String> {
         }
         RUNNING.store(false, Ordering::SeqCst);
     });
-    *thread_slot().lock().unwrap() = Some(handle);
+    *thread_slot().lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
     Ok(())
 }
 
 #[tauri::command]
 pub fn stop_system_audio_capture() -> Result<(), String> {
     STOP.store(true, Ordering::SeqCst);
-    if let Some(handle) = thread_slot().lock().unwrap().take() {
+    if let Some(handle) = thread_slot().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take() {
         let _ = handle.join();
     }
     Ok(())

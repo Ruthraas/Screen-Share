@@ -20,6 +20,15 @@ import { setLocalStream, setSharingActive } from "../../services/sharingState";
 
 export type LocalCaptureStatus = "idle" | "starting" | "active" | "error";
 
+/** Prazo máximo pra esperar o PRIMEIRO frame de verdade depois de
+ * `start_capture` retornar sucesso — o comando Rust só confirma que a sessão
+ * WGC abriu, não que ela vai de fato entregar frames (achado real: numa
+ * máquina especifica, GPU/driver pode aceitar a sessão e nunca chamar
+ * `on_frame_arrived`, sem nenhum erro voltando pro lado do cliente). Sem
+ * isso, `hasFrame` nunca vira `true` e a UI (`ScreenViewer`, `loading`) fica
+ * em "carregando tela" pra sempre, sem jeito de perceber que travou. */
+const FIRST_FRAME_TIMEOUT_MS = 12_000;
+
 function base64JpegToBlob(base64: string): Blob {
   return new Blob([base64ToBytes(base64)], { type: "image/jpeg" });
 }
@@ -88,8 +97,19 @@ export function useLocalCapture() {
   const audioFormatRef = useRef<AudioFormat | null>(null);
   const nextAudioStartRef = useRef(0);
   const audioEnabledRef = useRef(false);
+  const hasFrameRef = useRef(false);
+  const frameTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const clearFrameTimeout = useCallback(() => {
+    if (frameTimeoutRef.current !== undefined) {
+      clearTimeout(frameTimeoutRef.current);
+      frameTimeoutRef.current = undefined;
+    }
+  }, []);
 
   const teardown = useCallback(() => {
+    clearFrameTimeout();
+    hasFrameRef.current = false;
     setSharingActive(false);
     setLocalStream(null);
     setHasFrame(false);
@@ -107,11 +127,12 @@ export function useLocalCapture() {
       audioEnabledRef.current = false;
       void stopSystemAudioCapture().catch(() => {});
     }
-  }, []);
+  }, [clearFrameTimeout]);
 
   const start = useCallback(async (sourceId: string, quality: CaptureQuality, audioEnabled: boolean, fps: CaptureFps = 30) => {
     setStatus("starting");
     setError(undefined);
+    hasFrameRef.current = false;
     try {
       const canvas = document.createElement("canvas");
       canvas.width = 1280;
@@ -131,6 +152,10 @@ export function useLocalCapture() {
           }
           context.drawImage(bitmap, 0, 0);
           bitmap.close();
+          if (!hasFrameRef.current) {
+            hasFrameRef.current = true;
+            clearFrameTimeout();
+          }
           setHasFrame(true);
         } catch (frameError) {
           log.warn("capture", "falha ao decodificar frame recebido", {
@@ -190,6 +215,22 @@ export function useLocalCapture() {
       unlistenRef.current = unlisteners;
 
       await startCapture(sourceId, quality, fps);
+      // `startCapture` só confirma que a sessão WGC abriu do lado do Rust,
+      // nunca que frames de verdade vão chegar (achado real: numa máquina
+      // especifica isso pode nunca acontecer, sem nenhum erro). Sem prazo, a
+      // UI ficaria em "carregando tela" pra sempre em vez de virar um erro
+      // acionável (retry / trocar de fonte).
+      clearFrameTimeout();
+      frameTimeoutRef.current = setTimeout(() => {
+        if (hasFrameRef.current) return;
+        log.warn("capture", "nenhum frame chegou a tempo depois de iniciar a captura, desistindo", {
+          timeoutMs: FIRST_FRAME_TIMEOUT_MS,
+        });
+        teardown();
+        setStatus("error");
+        setError("a captura iniciou mas nenhuma imagem chegou a tempo — tente novamente ou escolha outra fonte");
+        void stopCapture().catch(() => {});
+      }, FIRST_FRAME_TIMEOUT_MS);
       if (audioEnabled) {
         audioEnabledRef.current = true;
         try {
@@ -217,7 +258,7 @@ export function useLocalCapture() {
       setError(message);
       log.warn("capture", "falha ao iniciar captura local", { message });
     }
-  }, [teardown]);
+  }, [teardown, clearFrameTimeout]);
 
   const stop = useCallback(async () => {
     teardown();

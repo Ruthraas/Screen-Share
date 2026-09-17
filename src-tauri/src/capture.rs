@@ -303,6 +303,11 @@ impl GraphicsCaptureApiHandler for ScreenCapture {
 type RunningCapture = CaptureControl<ScreenCapture, String>;
 static RUNNING: OnceLock<Mutex<Option<RunningCapture>>> = OnceLock::new();
 
+// `.lock()` recupera de "poison" (`unwrap_or_else(|poisoned| poisoned.into_inner())`
+// em vez de `.unwrap()`) em vez de propagar o panic: um panic acidental
+// segurando este lock nunca deveria travar TODO comando de captura futuro
+// (exigindo reiniciar o app inteiro) só porque o `Mutex` ficou marcado como
+// envenenado — o estado dentro dele continua utilizável.
 fn running() -> &'static Mutex<Option<RunningCapture>> {
     RUNNING.get_or_init(|| Mutex::new(None))
 }
@@ -310,7 +315,7 @@ fn running() -> &'static Mutex<Option<RunningCapture>> {
 #[tauri::command]
 pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u32) -> Result<(), String> {
     {
-        let guard = running().lock().unwrap();
+        let guard = running().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if guard.is_some() {
             return Err("capture-already-running".into());
         }
@@ -374,7 +379,7 @@ pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u
         }
     })??;
 
-    *running().lock().unwrap() = Some(control);
+    *running().lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(control);
     Ok(())
 }
 
@@ -448,7 +453,7 @@ pub fn capture_thumbnail(source_id: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn stop_capture() -> Result<(), String> {
-    let control = running().lock().unwrap().take();
+    let control = running().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
     match control {
         Some(control) => control.stop().map_err(|error| error.to_string()),
         // Nao ha captura em andamento — idempotente, nao e erro (espelha o

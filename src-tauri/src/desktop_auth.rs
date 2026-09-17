@@ -13,6 +13,9 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 static CANCEL: AtomicBool = AtomicBool::new(false);
 static PENDING: OnceLock<Mutex<Option<mpsc::Sender<String>>>> = OnceLock::new();
 
+// Recupera de "poison" em vez de propagar o panic (ver comentario igual em
+// capture.rs `running()`) — nunca deveria travar todo login futuro por causa
+// de um panic acidental segurando este lock antes.
 fn pending() -> &'static Mutex<Option<mpsc::Sender<String>>> {
     PENDING.get_or_init(|| Mutex::new(None))
 }
@@ -53,10 +56,10 @@ pub fn handle_second_instance_argv(argv: Vec<String>) {
         // órfão/repetido no link).
         #[cfg(debug_assertions)]
         {
-            let had_pending = pending().lock().unwrap().is_some();
+            let had_pending = pending().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_some();
             eprintln!("[desktop] debug deep-link-received had_pending={had_pending}");
         }
-        if let Some(sender) = pending().lock().unwrap().as_ref() {
+        if let Some(sender) = pending().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref() {
             let _ = sender.send(url.clone());
         }
     }
@@ -103,7 +106,7 @@ fn extract_oauth_result(url: &str) -> Result<OAuthResult, String> {
 
 fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
     let (tx, rx) = mpsc::channel::<String>();
-    *pending().lock().unwrap() = Some(tx);
+    *pending().lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tx);
     log_debug("start", &provider);
 
     // `target=desktop`: preparado pro backend poder escolher entre mais de
@@ -112,7 +115,7 @@ fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
     // então mandar já não quebra nada).
     let start_url = format!("{}/v1/auth/oauth/{provider}/start?target=desktop", api_url.trim_end_matches('/'));
     if open::that(start_url).is_err() {
-        *pending().lock().unwrap() = None;
+        *pending().lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         log_warn("browser-open-failed", &provider, "desktop-browser-failed");
         return Err("desktop-browser-failed".into());
     }
@@ -144,7 +147,7 @@ fn login(provider: String, api_url: String) -> Result<OAuthResult, String> {
         }
     };
 
-    *pending().lock().unwrap() = None;
+    *pending().lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     outcome
 }
 
