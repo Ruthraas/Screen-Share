@@ -17,11 +17,11 @@
     "@tabler/icons-react": "^3.46.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-updater": "^2.11.0",
-    "@vitejs/plugin-react": "^5.0.2",
+    "@vitejs/plugin-react": "^6.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
