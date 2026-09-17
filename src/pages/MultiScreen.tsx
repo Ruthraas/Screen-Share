@@ -44,7 +44,11 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
     sharing: member.id === user.id ? capture.status === "active" : sharingPeers.has(member.id),
   }));
   const activeIds = members.filter(member => member.sharing).map(member => member.id);
-  const [memberId, setMemberId] = useStreamSelection(activeIds);
+  // Ver a própria transmissão nunca é o mais importante da tela (pedido do
+  // usuário): o palco principal nunca pula pra você automaticamente,
+  // mesmo enquanto você está compartilhando — só troca pra você com um
+  // clique manual no seu próprio avatar, igual qualquer outro membro.
+  const [memberId, setMemberId] = useStreamSelection(activeIds, [user.id]);
   const [inviteStatus, setInviteStatus] = useState("");
 
   async function handleCopyInvite() {
@@ -61,7 +65,6 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
   async function handleStartSharing(sourceId: string, quality: CaptureQuality, audioEnabled: boolean, fps: CaptureFps) {
     setPickerOpen(false);
     await capture.start(sourceId, quality, audioEnabled, fps);
-    setMemberId(user.id);
   }
 
   async function handleStopSharing() {

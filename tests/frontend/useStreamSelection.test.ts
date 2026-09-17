@@ -26,3 +26,21 @@ test("selecting one participant never depends on who else is active — pure fun
   assert.equal(resolveSelection(activeIds, "c"), "c");
   assert.deepEqual(activeIds, ["a", "b", "c"], "activeIds nunca e mutado");
 });
+
+test("excludeFromFallback: nunca cai automaticamente em quem está excluído, mesmo sendo o primeiro ativo", () => {
+  // "eu" (self) e o primeiro em activeIds, mas nunca deveria ser escolhido
+  // sozinho pro palco principal (pedido do usuario: ver a propria tela
+  // nunca e a coisa mais importante) — cai pro proximo ativo que nao esta
+  // excluido.
+  assert.equal(resolveSelection(["eu", "outro"], null, ["eu"]), "outro");
+});
+
+test("excludeFromFallback: cai pra null se só sobrar gente excluída, nunca força a exclusão", () => {
+  assert.equal(resolveSelection(["eu"], null, ["eu"]), null);
+});
+
+test("excludeFromFallback: não afeta uma seleção manual já ativa — só o fallback automático", () => {
+  // usuario clicou no proprio avatar de proposito; continua ativo, a
+  // exclusao do fallback nunca desfaz uma escolha manual.
+  assert.equal(resolveSelection(["eu", "outro"], "eu", ["eu"]), "eu");
+});
