@@ -1,0 +1,38 @@
+name: CodeQL
+
+# Analise estatica de seguranca (SQL injection, XSS, segredos hardcoded,
+# etc.) do codigo JavaScript/TypeScript — frontend (src/) e backend
+# (backend/src/). Cobre so JS/TS: o suporte do CodeQL a Rust ainda e
+# experimental e exigiria um setup de build proprio (nao vale a
+# complexidade extra agora); o Rust do projeto ja passa por
+# `cargo check`/`cargo test` a cada push (backend-ci.yml/frontend-ci.yml).
+#
+# Roda em todo push/PR pra main e uma vez por semana (pega avisos novos de
+# regras do CodeQL mesmo sem mudanca de codigo).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        with:
+          languages: javascript-typescript
+
+      - uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        with:
+          category: "/language:javascript-typescript"
