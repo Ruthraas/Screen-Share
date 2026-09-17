@@ -34,6 +34,27 @@ async function main(): Promise<void> {
   });
   app.log.info({ config: toPublicSummary(config), migrationsApplied: applied }, "configuração carregada");
 
+  // Rede de seguranca (achado real: signaling/plugin.ts tinha exatamente
+  // esse buraco ate agora - um listener de evento cru do `ws`, fora do
+  // ciclo de vida de erro do Fastify, cuja promise rejeitada nunca era
+  // tratada). Registrar este handler muda o comportamento padrao do Node
+  // (que e derrubar o processo numa unhandled rejection) - preferimos
+  // manter o processo de pe pra nao tirar TODO MUNDO do ar por causa de
+  // uma falha isolada, mesmo que ela indique um bug real que merece
+  // try/catch no lugar certo. Nunca deveria ser a UNICA linha de defesa
+  // (o fix cirurgico no listener continua sendo o certo), so a ultima.
+  process.on("unhandledRejection", (reason) => {
+    app.log.error({ err: reason }, "unhandledRejection nao tratada - processo continua de pe, mas isto indica um bug real (falta try/catch em algum ponto)");
+  });
+  // Diferente de unhandledRejection: uma excecao sincrona nao capturada
+  // pode deixar o processo num estado inconsistente (memoria/handles
+  // parcialmente mutados no meio de uma operacao) - mais seguro reiniciar
+  // limpo (Render reinicia sozinho) do que continuar de pe adivinhando.
+  process.on("uncaughtException", (err) => {
+    app.log.error({ err }, "uncaughtException - encerrando processo pra reiniciar limpo");
+    process.exit(1);
+  });
+
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
