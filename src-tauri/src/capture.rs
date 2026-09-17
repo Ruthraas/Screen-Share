@@ -162,8 +162,39 @@ fn clamp_fps(fps: u32) -> u32 {
     fps.clamp(5, 60)
 }
 
-fn update_interval_for_fps(fps: u32) -> MinimumUpdateIntervalSettings {
+/// Versão pura (testável sem tocar WinRT) de `update_interval_for_fps` —
+/// `supported` vem de `is_minimum_update_interval_supported_cached()` no
+/// caminho real, ou de um valor fixo no teste.
+fn update_interval_for_fps_with_support(fps: u32, supported: bool) -> MinimumUpdateIntervalSettings {
+    if !supported {
+        return MinimumUpdateIntervalSettings::Default;
+    }
     MinimumUpdateIntervalSettings::Custom(Duration::from_secs_f64(1.0 / clamp_fps(fps) as f64))
+}
+
+/// Achado real (relatado pelo Victor de novo, depois do fix da borda:
+/// `GraphicsCaptureApiError(MinimumUpdateIntervalUnsupported)`) — exatamente
+/// a mesma causa do `draw_border_settings` abaixo, só que pra
+/// `MinimumUpdateIntervalSettings`: pedir `Custom` incondicionalmente falha
+/// em qualquer sistema onde a API de captura não suporta configurar o
+/// intervalo mínimo entre frames (`is_minimum_update_interval_supported()`).
+/// Sem suporte, cai pra `Default` (cadência nativa do WGC, normalmente a
+/// taxa de atualização da tela) em vez de nunca conseguir iniciar a
+/// captura — o fps pedido pelo cliente vira só uma preferência, não uma
+/// garantia, nesses sistemas. Checagem cacheada pelo mesmo motivo do
+/// `draw_border_settings`.
+fn is_minimum_update_interval_supported_cached() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or_else(|error| {
+            eprintln!("[capture] is_minimum_update_interval_supported falhou, assumindo sem suporte: {error:?}");
+            false
+        })
+    })
+}
+
+fn update_interval_for_fps(fps: u32) -> MinimumUpdateIntervalSettings {
+    update_interval_for_fps_with_support(fps, is_minimum_update_interval_supported_cached())
 }
 
 /// Achado real (relatado pelo Victor, `GraphicsCaptureApiError(BorderConfigUnsupported)`):
@@ -474,11 +505,19 @@ mod tests {
     }
 
     #[test]
-    fn update_interval_for_fps_matches_the_requested_cadence() {
-        let MinimumUpdateIntervalSettings::Custom(interval) = update_interval_for_fps(30) else {
+    fn update_interval_for_fps_matches_the_requested_cadence_when_supported() {
+        let MinimumUpdateIntervalSettings::Custom(interval) = update_interval_for_fps_with_support(30, true) else {
             panic!("esperava MinimumUpdateIntervalSettings::Custom");
         };
         assert!((interval.as_secs_f64() - 1.0 / 30.0).abs() < 1e-9);
+    }
+
+    /// Regressao (Victor, `GraphicsCaptureApiError(MinimumUpdateIntervalUnsupported)`)
+    /// — sem suporte, cai pra `Default` em vez de continuar pedindo `Custom`
+    /// (o que faria `start_capture` falhar de novo na mesma maquina).
+    #[test]
+    fn update_interval_for_fps_falls_back_to_default_when_unsupported() {
+        assert_eq!(update_interval_for_fps_with_support(30, false), MinimumUpdateIntervalSettings::Default);
     }
 
     #[test]
