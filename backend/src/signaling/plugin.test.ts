@@ -1,12 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
+import Fastify from "fastify";
 import { buildServer, type BuildServerOptions } from "../server.js";
 import { FakeTokenVerifier } from "../testing/fakeTokenVerifier.js";
 import { createTestDb } from "../testing/testDb.js";
 import { testAuthConfig } from "../testing/testAuthConfig.js";
 import { fakeTurnProvider } from "../testing/fakeTurnProvider.js";
 import type { FastifyInstance } from "fastify";
+import { GroupsRepository } from "../groups/repository.js";
+import { SignalingRooms } from "./room.js";
+import signalingPlugin from "./plugin.js";
 
 /**
  * Sobe um servidor real em porta efêmera (127.0.0.1:0) em vez de usar
@@ -353,6 +357,67 @@ test("SDP/ICE nunca aparecem em texto puro no log", async () => {
 
     wsOwner.terminate();
     wsMember.terminate();
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * Regressão real (achado numa sessão de produção — Victor reportou "crash"
+ * intermitente): `socket.on("message", async ...)` é um listener cru do
+ * `ws`, fora do ciclo de vida de erro do Fastify. `getRole` dentro dele é
+ * uma chamada de rede de verdade (Turso, issue #82) — antes desta correção,
+ * uma falha passageira nela virava uma unhandled promise rejection e
+ * derrubava o processo Node INTEIRO (sem `process.on("unhandledRejection")`
+ * em `index.ts`), tirando toda sala do ar de uma vez. Constrói o servidor
+ * manualmente (não via `buildServer`) pra poder substituir `getRole` por
+ * uma versão que falha na segunda chamada, simulando esse blip.
+ */
+test("uma falha passageira do banco ao processar mensagem não derruba o processo nem a conexão", async () => {
+  const db = await createTestDb();
+  const repo = new GroupsRepository(db);
+  const group = await repo.createGroup("Equipe", "owner1");
+
+  let getRoleCalls = 0;
+  const originalGetRole = repo.getRole.bind(repo);
+  repo.getRole = async (groupId: string, userId: string) => {
+    getRoleCalls += 1;
+    if (getRoleCalls === 2) throw new Error("turso-blip-simulado");
+    return originalGetRole(groupId, userId);
+  };
+
+  const app = Fastify();
+  await app.register(signalingPlugin, {
+    path: "/ws",
+    verifier: new FakeTokenVerifier(),
+    groupsRepo: repo,
+    rooms: new SignalingRooms(),
+  });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("endereço do servidor de teste inesperado");
+  const baseUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const ws = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    await nextMessage(ws); // "joined" (1ª chamada de getRole, sucesso)
+
+    const errorPromise = nextMessage(ws);
+    ws.send(JSON.stringify({ v: 1, type: "stream-started", correlationId: "c1", payload: {} })); // 2ª chamada: simula o blip
+    const errorEvent = await errorPromise;
+    assert.equal(errorEvent.type, "error");
+    assert.equal(errorEvent.payload.code, "internal_error");
+    assert.equal(ws.readyState, ws.OPEN, "a conexão não deveria ser fechada por uma falha momentânea do servidor");
+
+    // O processo (e o servidor) continuam de pé depois do blip: uma NOVA
+    // conexão (3ª chamada de getRole, já sem falha simulada) entra
+    // normalmente — se o processo tivesse derrubado, nada disto responderia.
+    const ws2 = new WebSocket(`${baseUrl}/ws?token=user:owner1&groupId=${group.id}`);
+    const joined2 = await nextMessage(ws2);
+    assert.equal(joined2.type, "joined", "servidor continua aceitando conexões normalmente depois do blip");
+
+    ws.terminate();
+    ws2.terminate();
   } finally {
     await app.close();
   }

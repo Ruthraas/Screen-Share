@@ -155,39 +155,57 @@ export async function registerSignaling(app: FastifyInstance, opts: SignalingPlu
         return;
       }
 
-      // Revalida a cada mensagem, não só na conexão: se o usuário saiu do
-      // grupo enquanto conectado, a sessão para de poder enviar/receber.
-      if (!(await opts.groupsRepo.getRole(groupId, uid))) {
-        send(socket, envelope(groupId, "error", { code: "forbidden", message: "Você não é mais membro deste grupo." }));
-        // O close() abaixo dispara o handler "close" registrado mais
-        // adiante, que já faz rooms.leave() + broadcast de peer-left — não
-        // duplicar aqui (issue #42: leave() agora só broadcasta quando de
-        // fato remove a conexão atual, chamar duas vezes faria a segunda
-        // chamada, no handler "close", virar um no-op e nunca avisar os
-        // outros participantes).
-        socket.close(4403, "forbidden");
-        return;
-      }
-
-      const logPayload = SENSITIVE_EVENT_TYPES.has(message.type) ? "[omitido]" : message.payload;
-      request.log.info(
-        { groupId, from: uid, to: hasTarget(message) ? message.to : undefined, type: message.type, payload: logPayload },
-        "signaling: evento recebido",
-      );
-
-      const out = envelope(groupId, message.type, message.payload, {
-        correlationId: message.correlationId,
-        from: uid,
-        ...(hasTarget(message) ? { to: message.to } : {}),
-      });
-
-      if (hasTarget(message)) {
-        const delivered = opts.rooms.sendTo(groupId, message.to, JSON.stringify(out));
-        if (!delivered) {
-          send(socket, envelope(groupId, "error", { code: "destination_unavailable", message: "Destinatário não está conectado." }));
+      // Este handler é um listener cru do `ws` (não uma rota do Fastify) —
+      // o Fastify não tem visibilidade nenhuma sobre exceções aqui dentro.
+      // `getRole` abaixo é uma chamada de rede de verdade (Turso, issue
+      // #82): qualquer falha passageira (timeout, blip de rede) que
+      // escapasse sem try/catch viraria uma unhandled promise rejection —
+      // e sem nenhum `process.on("unhandledRejection", ...)` registrado em
+      // `index.ts`, isso derruba o processo Node INTEIRO, tirando todo
+      // mundo de toda sala ao mesmo tempo (achado real: bate exatamente
+      // com "crash" intermitente relatado em produção). Trata como uma
+      // falha momentânea do lado do servidor, não do cliente — nunca
+      // fecha a conexão por causa disso, senão uma falha real (não
+      // "usuário sem permissão") ficaria indistinguível de #4403 pro
+      // cliente.
+      try {
+        // Revalida a cada mensagem, não só na conexão: se o usuário saiu do
+        // grupo enquanto conectado, a sessão para de poder enviar/receber.
+        if (!(await opts.groupsRepo.getRole(groupId, uid))) {
+          send(socket, envelope(groupId, "error", { code: "forbidden", message: "Você não é mais membro deste grupo." }));
+          // O close() abaixo dispara o handler "close" registrado mais
+          // adiante, que já faz rooms.leave() + broadcast de peer-left — não
+          // duplicar aqui (issue #42: leave() agora só broadcasta quando de
+          // fato remove a conexão atual, chamar duas vezes faria a segunda
+          // chamada, no handler "close", virar um no-op e nunca avisar os
+          // outros participantes).
+          socket.close(4403, "forbidden");
+          return;
         }
-      } else {
-        opts.rooms.broadcast(groupId, JSON.stringify(out), uid);
+
+        const logPayload = SENSITIVE_EVENT_TYPES.has(message.type) ? "[omitido]" : message.payload;
+        request.log.info(
+          { groupId, from: uid, to: hasTarget(message) ? message.to : undefined, type: message.type, payload: logPayload },
+          "signaling: evento recebido",
+        );
+
+        const out = envelope(groupId, message.type, message.payload, {
+          correlationId: message.correlationId,
+          from: uid,
+          ...(hasTarget(message) ? { to: message.to } : {}),
+        });
+
+        if (hasTarget(message)) {
+          const delivered = opts.rooms.sendTo(groupId, message.to, JSON.stringify(out));
+          if (!delivered) {
+            send(socket, envelope(groupId, "error", { code: "destination_unavailable", message: "Destinatário não está conectado." }));
+          }
+        } else {
+          opts.rooms.broadcast(groupId, JSON.stringify(out), uid);
+        }
+      } catch (err) {
+        request.log.error({ err, groupId, from: uid, type: message.type }, "signaling: falha ao processar mensagem");
+        send(socket, envelope(groupId, "error", { code: "internal_error", message: "Falha temporária ao processar a mensagem. Tente novamente." }));
       }
     });
 
