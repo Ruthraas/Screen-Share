@@ -10,18 +10,14 @@ name: Frontend CI
 # desenvolvimento real (Ruthraas) e o único validado até aqui.
 
 on:
+  # Sem filtro de path em pull_request de propósito — mesmo achado do
+  # backend-ci.yml (ver comentário lá): a proteção da branch main exige os
+  # dois checks em toda PR, e uma PR que só toca backend/ nunca dispara este
+  # workflow com filtro de path, deixando "Frontend build-and-test" pendente
+  # pra sempre e travando o merge (achado com PRs reais do Dependabot,
+  # #91/#92). push continua filtrado — não bloqueia merge, só evita rodar à
+  # toa depois que já mergeou.
   pull_request:
-    paths:
-      - "src/**"
-      - "src-tauri/**"
-      - "scripts/**"
-      - "tests/frontend/**"
-      - "package.json"
-      - "package-lock.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "oauth.html"
-      - ".github/workflows/frontend-ci.yml"
   push:
     branches: [main]
     paths:
