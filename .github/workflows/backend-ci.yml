@@ -11,10 +11,17 @@ name: Backend CI
 # docs/BACKEND.md antes de reativar o matrix com ubuntu-latest.
 
 on:
+  # Sem filtro de path em pull_request de propósito (achado real, 2026-09-18):
+  # a proteção da branch main exige os dois checks (Backend + Frontend
+  # build-and-test) em toda PR. Com filtro de path, uma PR que só toca
+  # backend/ nunca dispara o frontend-ci.yml — o check "Frontend
+  # build-and-test" fica pendente pra sempre (nunca reporta status, sucesso
+  # nem falha) e trava o merge indefinidamente, mesmo sem nada de errado
+  # (achado com PRs reais do Dependabot, #91/#92). GitHub documenta esse
+  # exato problema com checks obrigatórios + workflow filtrado por path.
+  # push continua filtrado — ali não bloqueia merge, só evita rodar de novo
+  # à toa depois que já mergeou.
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
   push:
     branches: [main]
     paths:
