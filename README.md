@@ -69,9 +69,10 @@ npm run tauri:dev
 ```
 
 Isso sobe só o cliente. Pra login e grupos funcionarem de verdade, o
-backend precisa estar rodando à parte (veja o `README`/`.env.example` dentro
-de `backend/`). O passo a passo completo de build, testes e empacotamento
-está em [`docs/FRONTEND.md`](docs/FRONTEND.md).
+backend precisa estar rodando à parte (veja o `README` dentro de
+`backend/` e as variáveis documentadas em `backend/src/config.ts`). O
+passo a passo completo de build, testes e empacotamento está em
+[`docs/FRONTEND.md`](docs/FRONTEND.md).
 
 ## Contribuindo
 

@@ -80,7 +80,7 @@ Isso já é real — vale testar pelo app empacotado, não só pela API:
 1. Suba o backend (`npm run dev`) com `backend/.env` configurado (as três
    credenciais OAuth + `OAUTH_REDIRECT_BASE_URL` +
    `OAUTH_FRONTEND_REDIRECT_URL_BROWSER`/`_DESKTOP`, todas obrigatórias —
-   ver `backend/.env.example`).
+   ver `backend/src/config.ts`).
 2. Abra o app (Tauri, `npm run tauri dev` na raiz do repo, ou o instalado).
 3. Cadastro por e-mail+senha → confirmar que a sessão persiste (fechar e
    reabrir o app continua logado).
