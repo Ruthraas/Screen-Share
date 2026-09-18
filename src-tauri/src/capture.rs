@@ -343,8 +343,30 @@ fn running() -> &'static Mutex<Option<RunningCapture>> {
     RUNNING.get_or_init(|| Mutex::new(None))
 }
 
+/// Achado real (Visualizador de Eventos do Windows, "Application Hang" /
+/// "Tipo com falha: Cross-thread" — confirmado em 4 ocorrências distintas,
+/// versões 2.0.4, 2.0.5 e 2.0.7, sempre no mesmo tipo): comandos Tauri
+/// síncronos (sem `async`) rodam na THREAD PRINCIPAL por padrão (mesma
+/// thread que o WebView2 inicializou em modo STA). `start_capture_blocking`
+/// (abaixo) bloqueia essa mesma chamada em `run_on_fresh_thread`
+/// (`std::thread::spawn(...).join()`) até a captura WGC abrir de verdade —
+/// se, nesse meio-tempo, a thread nova precisar marshalar de volta uma
+/// chamada WinRT/COM pro apartamento STA da thread principal (comum em
+/// interop WinRT), e a thread principal está parada em `.join()` sem
+/// bombear sua fila de mensagens, as duas travam esperando uma a outra:
+/// exatamente o padrão "Cross-thread" registrado. Mesma causa raiz e mesma
+/// correção já usada em `desktop_auth::desktop_oauth_login` — mover o
+/// trabalho bloqueante pra fora da thread principal via
+/// `tauri::async_runtime::spawn_blocking`, mantendo o corpo em si
+/// inalterado.
 #[tauri::command]
-pub fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u32) -> Result<(), String> {
+pub async fn start_capture(app: AppHandle, source_id: String, quality: Quality, fps: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || start_capture_blocking(app, source_id, quality, fps))
+        .await
+        .map_err(|_| "capture-thread-panic".to_string())?
+}
+
+fn start_capture_blocking(app: AppHandle, source_id: String, quality: Quality, fps: u32) -> Result<(), String> {
     {
         let guard = running().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if guard.is_some() {
@@ -447,8 +469,17 @@ impl GraphicsCaptureApiHandler for ThumbnailCapture {
     }
 }
 
+/// Mesmo risco de "Cross-thread" hang documentado em `start_capture` —
+/// também usa `run_on_fresh_thread` (bloqueia esperando a miniatura),
+/// também precisa sair da thread principal.
 #[tauri::command]
-pub fn capture_thumbnail(source_id: String) -> Result<String, String> {
+pub async fn capture_thumbnail(source_id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || capture_thumbnail_blocking(source_id))
+        .await
+        .map_err(|_| "capture-thread-panic".to_string())?
+}
+
+fn capture_thumbnail_blocking(source_id: String) -> Result<String, String> {
     // `run_on_fresh_thread` (ver comentário acima, `FailedToInitWinRT`): o
     // `resolve_item` (`.try_into()` pra `GraphicsCaptureItemType`) e o
     // `ThumbnailCapture::start` de baixo tocam WinRT e precisam de uma
@@ -482,8 +513,20 @@ pub fn capture_thumbnail(source_id: String) -> Result<String, String> {
     })?
 }
 
+/// Mesma cautela do `start_capture`/`capture_thumbnail`: `control.stop()`
+/// (abaixo) pode esperar a sessão WGC encerrar de verdade do lado da API
+/// de captura — mesmo risco de precisar da thread principal livre pra
+/// marshalar WinRT/COM enquanto espera. Sai da thread principal pelo mesmo
+/// motivo, mesmo sem uma reprodução isolada confirmando este comando
+/// específico como o gatilho de algum "Cross-thread" já registrado.
 #[tauri::command]
-pub fn stop_capture() -> Result<(), String> {
+pub async fn stop_capture() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(stop_capture_blocking)
+        .await
+        .map_err(|_| "capture-thread-panic".to_string())?
+}
+
+fn stop_capture_blocking() -> Result<(), String> {
     let control = running().lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
     match control {
         Some(control) => control.stop().map_err(|error| error.to_string()),
