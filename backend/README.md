@@ -11,20 +11,16 @@ para o contrato HTTP.
 ## Requisitos
 
 - **Node.js 22.x ou 23.x** (`>=22 <25` — ver `engines` em `package.json` e
-  `.nvmrc`). Node 24+ ainda não teve um binário pré-compilado do
-  `better-sqlite3` validado neste projeto; se usar `nvm`, `nvm use` já lê o
-  `.nvmrc`.
-- **Nenhum Python nem compilador C++ é necessário.** `better-sqlite3` (a
-  única dependência nativa) já vem com binários pré-compilados para
-  linux/darwin/win32 (x64 e arm64) dentro do próprio pacote — o
-  `backend/.npmrc` (`ignore-scripts=true`) impede o npm de tentar
-  recompilar do zero, que é o comportamento padrão dele quando o pacote
-  tem um `binding.gyp` (issue #58: isso quebrava a instalação limpa no
-  Windows por falta de Python, mesmo com o binário certo já disponível).
-  Se um dia trocar de plataforma/arquitetura pra uma que o
-  `better-sqlite3` não pré-compila, a instalação vai falhar de novo — nesse
-  caso remova `ignore-scripts` (ou rode `npm rebuild better-sqlite3` à
-  parte) e garanta Python 3 + toolchain de build C++ nessa máquina.
+  `.nvmrc`); se usar `nvm`, `nvm use` já lê o `.nvmrc`.
+- **Nenhuma dependência nativa.** O backend não tem mais nenhum pacote com
+  `binding.gyp`/compilação nativa desde a migração de `better-sqlite3`
+  (SQLite local) pra `@libsql/client`/Turso (issue #82) — não precisa de
+  Python nem de compilador C++ em nenhuma plataforma. `backend/.npmrc`
+  (`ignore-scripts=true`) continua ligado por segurança geral (evita rodar
+  script `install`/`postinstall` de qualquer dependência por padrão), não
+  mais pelo motivo original (verificado de novo em 2026-09-14,
+  pós-migração: nenhum pacote na árvore depende de um desses scripts pra
+  funcionar).
 
 ## Comandos
 
@@ -48,19 +44,31 @@ versão do Node instalada estiver fora do intervalo suportado, em vez de
 instalar silenciosamente numa versão não testada.
 
 Por padrão o serviço escuta em `0.0.0.0:8787`. Ajuste com as variáveis de
-ambiente `HOST` e `PORT`. No boot, o servidor abre `DATABASE_PATH` e roda
-as migrações pendentes automaticamente (`src/db/migrate.ts`) — não é
-preciso rodar `npm run migrate` à parte para simplesmente subir o serviço.
+ambiente `HOST` e `PORT`. O banco é configurado por `DATABASE_PATH`
+(arquivo local ou `:memory:`, uso local/teste) ou por
+`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` (Turso remoto, produção — issue
+#82) — pelo menos um dos dois é obrigatório, ver `.env.example`. No boot,
+o servidor roda as migrações pendentes automaticamente
+(`src/db/migrate.ts`) — não é preciso rodar `npm run migrate` à parte
+para simplesmente subir o serviço.
 
 ## Endpoints disponíveis
 
 - `GET /health` — público, `200 { "status": "ok" }` (liveness, nunca falha).
 - `GET /ready` — público, `200 { "status": "ok", "checks": { "database": "ok" } }`
   ou `503` se o banco estiver inacessível (readiness).
+- `/v1/auth/*` — registro/login por e-mail+senha, OAuth (Google/GitHub/
+  Discord), refresh/logout (issue #30).
 - `/v1/groups`, `/v1/invites` — grupos e convites completos (issues #35,
   #32, #33, #34). Exigem `Authorization: Bearer <token>`.
-- Presença (`/v1/groups/:id/presence*`) e credenciais TURN
-  (`/v1/turn-credentials`) ainda não implementadas — ver `docs/BACKEND.md`.
+- `/v1/groups/:id/presence*` — presença com heartbeat (issue #36).
+- `/v1/turn-credentials` — credenciais TURN de curta duração via
+  Cloudflare Realtime (issues #40/#41).
+- `/ws` — sinalização WebSocket (offer/answer/ICE) entre participantes do
+  mesmo grupo (issues #37/#38/#42).
+
+Contrato completo em [`docs/backend/openapi.yaml`](../docs/backend/openapi.yaml)
+e no `docs/BACKEND.md` (seção "Contrato com o Frontend").
 
 ## Encerramento
 

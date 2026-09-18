@@ -4,20 +4,33 @@ Documento vivo. Objetivo: deixar claro o que este teste mede de verdade
 hoje, o que fica de fora (e por quê), como rodar, e os números da última
 execução real.
 
+> **Atualização (2026-09-18)**: os achados das seções 2 e 3 foram medidos
+> contra `better-sqlite3`/SQLite local, síncrono — o banco migrou pra
+> `@libsql/client`/Turso (remoto, assíncrono) na issue #82. `journal_mode`/
+> `synchronous` do SQLite e a explicação de latência crescendo por leitura
+> síncrona serializada não existem mais no caminho de produção. Mantido
+> como registro real do que foi encontrado e por quê (a lição sobre modo
+> de journal vale pra qualquer SQLite local), não como descrição do banco
+> atual — ver `docs/backend/ARQUITETURA.md` pra decisão vigente. Números de
+> capacidade da sinalização em si (conexões WS, latência de relay) devem
+> ser medidos de novo se um teto real precisar ser confirmado contra o
+> Turso.
+
 ## 0. O que este teste NÃO cobre (leia antes de interpretar os números)
 
 `#47` original pede "bitrate, CPU, memória, banda" do **relay de mídia**.
 Isso não dá pra medir ainda:
 
-- **Sem `RTCPeerConnection` no cliente ainda** (issue #71, em aberto) — não
-  existe SDP/mídia de verdade trafegando, só mensagens pequenas de
-  sinalização (`offer`/`answer`/`ice-candidate` com payload sintético).
-  "Bitrate" não existe nesse cenário.
+- **Sem `RTCPeerConnection` no cliente na época deste teste** (issue #71 —
+  já mergeada desde então, ver seção 4) — não existia SDP/mídia de verdade
+  trafegando quando isso foi escrito, só mensagens pequenas de sinalização
+  (`offer`/`answer`/`ice-candidate` com payload sintético). "Bitrate" não
+  existe nesse cenário.
 - **TURN é um serviço gerenciado (Cloudflare Realtime, issue #40)** — não
   operamos o relay de mídia, então CPU/memória/banda desse relay não são
-  infraestrutura nossa pra medir. Quando a #71 estiver pronta e uma sessão
-  de mídia real acontecer, os números relevantes de capacidade de TURN
-  vêm do próprio dashboard/limites da Cloudflare, não de um teste local.
+  infraestrutura nossa pra medir. Os números relevantes de capacidade de
+  TURN vêm do próprio dashboard/limites da Cloudflare, não de um teste
+  local.
 
 O que **este** teste mede, de verdade, contra um servidor real: capacidade
 da camada de **sinalização** (WebSocket, `/ws`) e da API HTTP que a
@@ -107,16 +120,14 @@ bem além de 1000 ou introduzir concorrência artificial na leitura de
 membership, o que não parece valer o esforço pro tamanho do produto
 (grupos privados pequenos, não milhares de conexões simultâneas).
 
-## 4. Próximo passo real de capacidade
+## 4. Teste de mídia real — já aconteceu (issue #10)
 
-A issue #71 (cliente WebRTC no frontend, com indicador de qualidade) já
-foi mergeada (`4604275`, 2026-09-14) — então o bloqueio "sem cliente
-capaz de mídia real" descrito na seção 0 não existe mais no frontend.
-O que falta pra medir bitrate/CPU/memória de mídia de verdade não é mais
-código, é **execução**: rodar duas ou mais instâncias reais do app
-Tauri (não um script Node) trocando tela de verdade, o que é um teste
-manual/integração, fora do escopo de um script automatizado de backend.
-Esse documento e o script (`backend/scripts/teste-capacidade-signaling.mjs`)
-continuam cobrindo a camada de sinalização (o que é nosso e é
-automatizável); o teste de mídia real fica para quando houver testes reais
-manuais com o app compilado.
+A issue #71 (cliente WebRTC no frontend, com indicador de qualidade) foi
+mergeada em `4604275` (2026-09-14) — o bloqueio "sem cliente capaz de
+mídia real" descrito na seção 0 não existe mais no frontend desde então.
+O teste manual/integração com mídia real entre participantes de verdade
+(o que faltava, fora do escopo de um script automatizado de backend) é a
+issue #10 — **fechada** (validada manualmente pelos mantenedores, sem
+relatório formal registrado neste documento). Este script e documento
+continuam válidos como regressão automatizável da camada de sinalização
+(o que é nosso), independente do teste de mídia já ter acontecido.
