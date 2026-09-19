@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import type { User } from "../../data/types";
 import { IconArrowUp, IconX } from "../ui/Icons";
 import type { ChatMessage } from "./chatProtocol";
@@ -28,7 +28,7 @@ export function ChatPanel({ messages, selfId, members, onSend, onClose }: { mess
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
-  function handleSubmit(event: React.FormEvent) {
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed) return;
