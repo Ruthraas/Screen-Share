@@ -1594,9 +1594,15 @@ button:focus-visible {
   object-fit: cover;
 }
 
+/* `max-width` + `margin: 0 auto` (pedido do usuário) — sem isso, o
+   conteúdo ficava colado no canto esquerdo em qualquer tela larga, com
+   todo o espaço sobrando de um lado só em vez de distribuído nas duas
+   margens. */
 .groups-page {
   padding: 24px;
   overflow: auto;
+  max-width: 960px;
+  margin: 0 auto;
 }
 
 .groups-page .multi-panel {
@@ -2277,17 +2283,23 @@ button:disabled,
 
 /* "Sala de espera" — grid de participantes enquanto ninguém compartilha
    (substitui o `ScreenViewer` inteiro nesse estado, ScreenViewer.tsx
-   continua cuidando só de quando existe transmissão de verdade). */
+   continua cuidando só de quando existe transmissão de verdade).
+   `margin: auto` (não `flex: 1` + `justify-content: center`) — achado real
+   reportado pelo usuário: esticar a caixa pra ocupar a altura toda
+   disponível deixava uma área enorme e vazia ao redor de só 1-2 cards.
+   Agora a caixa cresce só até o tamanho do próprio conteúdo (até o teto de
+   `max-width`) e se centraliza sozinha dentro de `.multi-viewer-area`
+   (single filho, flex row — auto-margin absorve o espaço extra nos dois
+   eixos). */
 .participant-grid-stage {
-  flex: 1;
-  min-height: 0;
+  margin: auto;
   width: 100%;
+  max-width: 900px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 20px;
-  padding: 24px 24px 88px;
+  padding: 32px 24px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);

@@ -33,8 +33,15 @@ function Harness() {
     <div>
       <div data-testid="ended-count">{endedCount}</div>
       <ScreenViewer user={user} stream={stream} members={members} onStop={() => {}} onStreamEnded={() => setEndedCount(c => c + 1)} />
-      <div data-testid="participant-grid-preview" style={{ marginTop: 24 }}>
+      {/* Mesmo contexto flex de MultiScreen.tsx (`.multi-viewer-area`,
+         altura fixa aqui só pra dar pra ver a centralização vertical de
+         verdade no harness) — `.participant-grid-stage` usa `margin: auto`
+         pra se centralizar sozinho dentro dele. */}
+      <div data-testid="participant-grid-preview" className="multi-viewer-area" style={{ marginTop: 24, height: 500 }}>
         <ParticipantGrid members={members} />
+      </div>
+      <div data-testid="participant-grid-preview-2-membros" className="multi-viewer-area" style={{ marginTop: 24, height: 500 }}>
+        <ParticipantGrid members={members.slice(0, 2)} />
       </div>
     </div>
   );
