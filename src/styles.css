@@ -2299,11 +2299,17 @@ button:disabled,
   font-size: 12px;
 }
 
+/* Colunas de largura FIXA (não `1fr`) + `justify-content: center` — com
+   `auto-fill`/`1fr` puro, poucos membros deixam colunas vazias "fantasmas"
+   que empurram os cards existentes pra esquerda em vez de centralizar o
+   grupo (achado real reportado pelo usuário). Largura fica do tamanho do
+   conteúdo (até o teto de 720px), então `.participant-grid-stage` (pai,
+   `align-items: center`) já centraliza o bloco inteiro também. */
 .participant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, 120px);
+  justify-content: center;
   gap: 12px;
-  width: 100%;
   max-width: 720px;
 }
 
