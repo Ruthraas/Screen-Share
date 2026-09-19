@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useStreamSelection } from "../components/groups/useStreamSelection";
 import { useAccount } from "../components/layout/AccountProvider";
+import { ChatPanel } from "../components/rtc/ChatPanel";
 import { useRtc } from "../components/rtc/RtcProvider";
 import { CaptureSourcePicker } from "../components/sharing/CaptureSourcePicker";
 import { ParticipantGrid } from "../components/sharing/ParticipantGrid";
 import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { useLocalCapture } from "../components/sharing/useLocalCapture";
 import { Button } from "../components/ui/Button";
-import { IconChevronLeft, IconPlayerStop, IconShare } from "../components/ui/Icons";
+import { IconChevronLeft, IconMessage, IconPlayerStop, IconShare } from "../components/ui/Icons";
 import type { CaptureFps, CaptureQuality } from "../services/captureClient";
 
 /**
@@ -37,9 +38,10 @@ import type { CaptureFps, CaptureQuality } from "../services/captureClient";
  */
 export function MultiScreen({ onBack }: { onBack: () => void }) {
   const { selected, createInviteLink, user } = useAccount();
-  const { remoteStreams, sharingPeers, signalingStatus, peerQuality } = useRtc();
+  const { remoteStreams, sharingPeers, signalingStatus, peerQuality, chatMessages, sendChatMessage } = useRtc();
   const capture = useLocalCapture();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const members = (selected?.members ?? []).map(member => ({
     ...member,
     sharing: member.id === user.id ? capture.status === "active" : sharingPeers.has(member.id),
@@ -93,26 +95,31 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
       </header>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
       {capture.error ? <p className="muted" role="alert">{capture.error}</p> : null}
-      <div className="multi-viewer-area">
-        {showWaitingRoom ? (
-          <ParticipantGrid members={members} />
-        ) : (
-          <ScreenViewer
-            user={viewingMember}
-            stream={viewingStream}
-            members={members}
-            loading={viewingSelf && !capture.hasFrame}
-            emptyMessage={signalingStatus === "connecting" ? "conectando..." : "selecione um participante pra ver a tela"}
-            onSelect={member => setMemberId(member.id)}
-            onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
-            onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
-          />
-        )}
+      <div className="multi-content">
+        <div className="multi-viewer-area">
+          {showWaitingRoom ? (
+            <ParticipantGrid members={members} />
+          ) : (
+            <ScreenViewer
+              user={viewingMember}
+              stream={viewingStream}
+              members={members}
+              loading={viewingSelf && !capture.hasFrame}
+              emptyMessage={signalingStatus === "connecting" ? "conectando..." : "selecione um participante pra ver a tela"}
+              onSelect={member => setMemberId(member.id)}
+              onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
+              onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
+            />
+          )}
+        </div>
+        {chatOpen ? (
+          <ChatPanel messages={chatMessages} selfId={user.id} members={members} onSend={sendChatMessage} onClose={() => setChatOpen(false)} />
+        ) : null}
       </div>
       {/* Barra de controles flutuante (pedido do usuário, inspirado no
          layout de um app de chamada de um amigo dele) — as ações da sala
-         (compartilhar/parar, convidar) saem do cabeçalho e ficam sempre
-         visíveis por cima do palco, ScreenViewer ou grid de espera. */}
+         (compartilhar/parar, convidar, chat) saem do cabeçalho e ficam
+         sempre visíveis por cima do palco, ScreenViewer ou grid de espera. */}
       <div className="stage-controls">
         {capture.status === "active" ? (
           <Button variant="danger" icon={<IconPlayerStop />} onClick={() => void handleStopSharing()}>parar transmissao</Button>
@@ -122,6 +129,7 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
           </Button>
         )}
         <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
+        <button type="button" className={`nav-button ${chatOpen ? "is-active" : ""}`} title="chat da sala" onClick={() => setChatOpen(open => !open)}><IconMessage /></button>
       </div>
       <CaptureSourcePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onStart={(sourceId, quality, audioEnabled, fps) => void handleStartSharing(sourceId, quality, audioEnabled, fps)} />
     </section>

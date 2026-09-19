@@ -3,6 +3,7 @@ import { connectSignaling, type ServerEvent, type SignalingHandle } from "../../
 import { fetchTurnCredentials } from "../../services/turnCredentials";
 import { log } from "../../services/logger";
 import { classifyConnectionQuality, isPolitePeer, type ConnectionQuality } from "./rtcPolicy";
+import { decodeChatPayload, encodeChatPayload, normalizeChatText, MAX_CHAT_HISTORY, type ChatMessage } from "./chatProtocol";
 
 const QUALITY_POLL_INTERVAL_MS = 3000;
 /** Renovar a credencial TURN antes do `ttlSeconds` vencer (doc:
@@ -15,6 +16,12 @@ type PeerState = {
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  /** Canal de chat (issue do usuário) — só o lado impolite cria
+   * (`pc.createDataChannel`), o polite recebe via `pc.ondatachannel`; mesma
+   * assimetria determinística de quem faz a offer, sem coordenação pela
+   * rede (ver comentário em `ensurePeer`). `null` até a negociação
+   * terminar OU se a conexão nunca chegou a abrir o canal. */
+  dataChannel: RTCDataChannel | null;
 };
 
 export type GroupConnectionsState = {
@@ -28,6 +35,10 @@ export type GroupConnectionsState = {
   sharingPeers: Set<string>;
   peerQuality: Map<string, ConnectionQuality>;
   signalingStatus: "idle" | "connecting" | "connected" | "error";
+  /** Histórico de chat da sala selecionada, mais recente por último —
+   * nunca persistido, some ao trocar de grupo (ver cleanup do efeito de
+   * conexão). */
+  chatMessages: ChatMessage[];
 };
 
 const EMPTY_STATE: GroupConnectionsState = {
@@ -35,6 +46,7 @@ const EMPTY_STATE: GroupConnectionsState = {
   sharingPeers: new Set(),
   peerQuality: new Map(),
   signalingStatus: "idle",
+  chatMessages: [],
 };
 
 /** Extrai o RTT (ms) do par de candidato ICE selecionado — não existe um
@@ -70,7 +82,7 @@ async function currentRttMs(pc: RTCPeerConnection): Promise<number | null> {
  * tracks nunca é responsabilidade de quem está vendo a tela, só de quem
  * está transmitindo.
  */
-export function useGroupConnections(groupId: string | undefined, selfId: string, localStream: MediaStream | null): GroupConnectionsState {
+export function useGroupConnections(groupId: string | undefined, selfId: string, localStream: MediaStream | null): GroupConnectionsState & { sendChatMessage: (text: string) => void } {
   const [state, setState] = useState<GroupConnectionsState>(EMPTY_STATE);
 
   const peersRef = useRef(new Map<string, PeerState>());
@@ -85,6 +97,7 @@ export function useGroupConnections(groupId: string | undefined, selfId: string,
       sharingPeers: new Set(sharingPeersRef.current),
       peerQuality: new Map(peerQualityRef.current),
       signalingStatus: signalingStatusRef.current,
+      chatMessages: chatMessagesRef.current,
     });
   }
 
@@ -92,6 +105,50 @@ export function useGroupConnections(groupId: string | undefined, selfId: string,
   const sharingPeersRef = useRef(new Set<string>());
   const peerQualityRef = useRef(new Map<string, ConnectionQuality>());
   const signalingStatusRef = useRef<GroupConnectionsState["signalingStatus"]>("idle");
+  const chatMessagesRef = useRef<ChatMessage[]>([]);
+
+  function appendChatMessage(message: ChatMessage) {
+    chatMessagesRef.current = [...chatMessagesRef.current, message].slice(-MAX_CHAT_HISTORY);
+    publishState();
+  }
+
+  /** Liga os handlers de um `RTCDataChannel` de chat — chamado tanto pro
+   * lado que cria (`createDataChannel`) quanto pro que recebe
+   * (`ondatachannel`), sempre com o `uid` real do peer autenticado (nunca
+   * de um campo dentro da mensagem — mesma lição do bug corrigido em
+   * `backend/src/signaling/plugin.ts`: identidade vem da conexão, não do
+   * payload). */
+  function wireDataChannel(uid: string, peer: PeerState, channel: RTCDataChannel) {
+    peer.dataChannel = channel;
+    channel.onmessage = event => {
+      if (typeof event.data !== "string") return; // nunca aceita binario aqui
+      const decoded = decodeChatPayload(event.data);
+      if (!decoded) {
+        log.debug("rtc", "mensagem de chat com formato invalido, ignorada", { uid });
+        return;
+      }
+      appendChatMessage({ from: uid, text: decoded.text, at: decoded.at });
+    };
+    channel.onerror = () => {
+      log.debug("rtc", "canal de chat com erro", { uid });
+    };
+  }
+
+  function sendChatMessage(text: string) {
+    const normalized = normalizeChatText(text);
+    if (!normalized) return;
+    const at = Date.now();
+    appendChatMessage({ from: selfId, text: normalized, at });
+    const payload = encodeChatPayload(normalized, at);
+    for (const peer of peersRef.current.values()) {
+      if (peer.dataChannel?.readyState !== "open") continue;
+      try {
+        peer.dataChannel.send(payload);
+      } catch (error) {
+        log.warn("rtc", "falha ao enviar mensagem de chat pra um peer", { name: error instanceof Error ? error.name : "unknown" });
+      }
+    }
+  }
 
   function syncLocalTracks(pc: RTCPeerConnection) {
     // Uma conexao ja fechada (peer saiu, ICE falhou) nunca deveria receber
@@ -131,8 +188,17 @@ export function useGroupConnections(groupId: string | undefined, selfId: string,
     if (existing) closePeer(uid);
 
     const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-    const peer: PeerState = { pc, polite: isPolitePeer(selfId, uid), makingOffer: false, ignoreOffer: false };
+    const peer: PeerState = { pc, polite: isPolitePeer(selfId, uid), makingOffer: false, ignoreOffer: false, dataChannel: null };
     peersRef.current.set(uid, peer);
+
+    // Chat (issue do usuário) — canal de dados na mesma conexão, criado só
+    // por um dos dois lados (mesma assimetria determinística de quem faz a
+    // offer): o outro lado sempre recebe via `ondatachannel`, nunca os dois
+    // criam, senão viraria dois canais paralelos em vez de um só.
+    if (!peer.polite) wireDataChannel(uid, peer, pc.createDataChannel("chat", { ordered: true }));
+    pc.ondatachannel = event => {
+      if (event.channel.label === "chat") wireDataChannel(uid, peer, event.channel);
+    };
 
     pc.onicecandidate = event => {
       if (!event.candidate) return;
@@ -343,6 +409,9 @@ export function useGroupConnections(groupId: string | undefined, selfId: string,
       remoteStreamsRef.current = new Map();
       sharingPeersRef.current = new Set();
       peerQualityRef.current = new Map();
+      // Chat e efemero por sala (pedido do usuario) — nunca sobrevive a
+      // troca de grupo, igual a presenca/sinalizacao do backend.
+      chatMessagesRef.current = [];
       signalingStatusRef.current = "idle";
       publishState();
     };
@@ -380,5 +449,5 @@ export function useGroupConnections(groupId: string | undefined, selfId: string,
     return () => clearInterval(interval);
   }, []);
 
-  return state;
+  return { ...state, sendChatMessage };
 }
