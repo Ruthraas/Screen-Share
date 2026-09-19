@@ -1361,12 +1361,6 @@ textarea {
   flex: 0 0 auto;
 }
 
-.multi-panel-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .settings-card {
   width: min(420px, calc(100vw - 40px));
 }
@@ -2150,6 +2144,89 @@ button:disabled,
   font-size: 12px;
 }
 
+/* Barra de controles flutuante (pedido do usuário) — sempre centralizada
+   por cima do palco (ScreenViewer ou grid de espera), nunca empurra o
+   conteúdo (`.multi-panel` já é `position: relative`). Paleta e raio
+   próprios do ScreenShare (nunca a cor do app de referência que inspirou
+   o layout) — `--surface`/`--border`/`--radius-lg`, os mesmos tokens de
+   qualquer outro card da interface. */
+.stage-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  z-index: 5;
+}
+
+/* "Sala de espera" — grid de participantes enquanto ninguém compartilha
+   (substitui o `ScreenViewer` inteiro nesse estado, ScreenViewer.tsx
+   continua cuidando só de quando existe transmissão de verdade). */
+.participant-grid-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 24px 88px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.participant-grid-caption {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.participant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.participant-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.participant-card__name {
+  color: var(--text-primary);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.participant-card__status {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.participant-card__status.is-online {
+  color: var(--accent);
+}
+
 .live-dot {
   position: absolute;
   right: 10px;
@@ -2315,6 +2392,9 @@ kbd {
   border-radius: 0;
   width: 100vw;
   height: 100vh;
+  /* Acima de .stage-controls (z-index: 5) — tela cheia precisa cobrir a
+     barra flutuante, não ficar por baixo dela. */
+  z-index: 50;
 }
 
 /* Sem outros participantes ainda (preview local, issue #8) — nao reserva a

@@ -8,9 +8,17 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ScreenViewer } from "../src/components/sharing/ScreenViewer";
+import { ParticipantGrid } from "../src/components/sharing/ParticipantGrid";
 import "../src/styles.css";
 
 const user = { id: "u1", name: "harness user", initials: "HU", online: true, current: true };
+const members = [
+  user,
+  { id: "u2", name: "boa conexao", initials: "BC", online: true, sharing: true, quality: "good" as const },
+  { id: "u3", name: "conexao ok", initials: "OK", online: true, quality: "ok" as const },
+  { id: "u4", name: "conexao ruim", initials: "RU", online: true, quality: "bad" as const },
+  { id: "u5", name: "offline", initials: "OF", online: false },
+];
 
 function Harness() {
   const [stream, setStream] = useState<MediaStream | undefined>(undefined);
@@ -24,7 +32,10 @@ function Harness() {
   return (
     <div>
       <div data-testid="ended-count">{endedCount}</div>
-      <ScreenViewer user={user} stream={stream} onStop={() => {}} onStreamEnded={() => setEndedCount(c => c + 1)} />
+      <ScreenViewer user={user} stream={stream} members={members} onStop={() => {}} onStreamEnded={() => setEndedCount(c => c + 1)} />
+      <div data-testid="participant-grid-preview" style={{ marginTop: 24 }}>
+        <ParticipantGrid members={members} />
+      </div>
     </div>
   );
 }

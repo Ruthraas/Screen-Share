@@ -3,6 +3,7 @@ import { useStreamSelection } from "../components/groups/useStreamSelection";
 import { useAccount } from "../components/layout/AccountProvider";
 import { useRtc } from "../components/rtc/RtcProvider";
 import { CaptureSourcePicker } from "../components/sharing/CaptureSourcePicker";
+import { ParticipantGrid } from "../components/sharing/ParticipantGrid";
 import { ScreenViewer } from "../components/sharing/ScreenViewer";
 import { useLocalCapture } from "../components/sharing/useLocalCapture";
 import { Button } from "../components/ui/Button";
@@ -36,12 +37,14 @@ import type { CaptureFps, CaptureQuality } from "../services/captureClient";
  */
 export function MultiScreen({ onBack }: { onBack: () => void }) {
   const { selected, createInviteLink, user } = useAccount();
-  const { remoteStreams, sharingPeers, signalingStatus } = useRtc();
+  const { remoteStreams, sharingPeers, signalingStatus, peerQuality } = useRtc();
   const capture = useLocalCapture();
   const [pickerOpen, setPickerOpen] = useState(false);
   const members = (selected?.members ?? []).map(member => ({
     ...member,
     sharing: member.id === user.id ? capture.status === "active" : sharingPeers.has(member.id),
+    // RTT só existe entre peers de verdade — nunca contra si mesmo.
+    quality: member.id === user.id ? undefined : peerQuality.get(member.id),
   }));
   const activeIds = members.filter(member => member.sharing).map(member => member.id);
   // Ver a própria transmissão nunca é o mais importante da tela (pedido do
@@ -77,35 +80,48 @@ export function MultiScreen({ onBack }: { onBack: () => void }) {
   const viewingSelf = memberId === user.id;
   const viewingStream = viewingSelf ? capture.stream : memberId ? remoteStreams.get(memberId) : undefined;
 
+  // Sala de espera (grid) só faz sentido depois de saber de verdade quem
+  // está transmitindo — enquanto a sinalização ainda está conectando,
+  // ninguém em `sharingPeers` seria "ninguém compartilhando" por engano.
+  const showWaitingRoom = signalingStatus !== "connecting" && activeIds.length === 0;
+
   return (
     <section className="multi-panel">
       <header>
         <Button variant="ghost" icon={<IconChevronLeft />} onClick={onBack}>todos os grupos</Button>
         <p>{activeIds.length} transmissoes ativas</p>
-        <div className="multi-panel-actions">
-          {capture.status === "active" ? (
-            <Button variant="danger" icon={<IconPlayerStop />} onClick={() => void handleStopSharing()}>parar transmissao</Button>
-          ) : (
-            <Button icon={<IconShare />} disabled={capture.status === "starting"} onClick={() => setPickerOpen(true)}>
-              {capture.status === "starting" ? "iniciando..." : "compartilhar tela"}
-            </Button>
-          )}
-          <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
-        </div>
       </header>
       {inviteStatus ? <p className="muted" role="status">{inviteStatus}</p> : null}
       {capture.error ? <p className="muted" role="alert">{capture.error}</p> : null}
       <div className="multi-viewer-area">
-        <ScreenViewer
-          user={viewingMember}
-          stream={viewingStream}
-          members={members}
-          loading={viewingSelf && !capture.hasFrame}
-          emptyMessage={signalingStatus === "connecting" ? "conectando..." : activeIds.length === 0 ? "ninguem esta compartilhando a tela agora" : "selecione um participante pra ver a tela"}
-          onSelect={member => setMemberId(member.id)}
-          onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
-          onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
-        />
+        {showWaitingRoom ? (
+          <ParticipantGrid members={members} />
+        ) : (
+          <ScreenViewer
+            user={viewingMember}
+            stream={viewingStream}
+            members={members}
+            loading={viewingSelf && !capture.hasFrame}
+            emptyMessage={signalingStatus === "connecting" ? "conectando..." : "selecione um participante pra ver a tela"}
+            onSelect={member => setMemberId(member.id)}
+            onStop={viewingSelf ? () => void handleStopSharing() : () => setMemberId(null)}
+            onStreamEnded={viewingSelf ? () => void handleStopSharing() : undefined}
+          />
+        )}
+      </div>
+      {/* Barra de controles flutuante (pedido do usuário, inspirado no
+         layout de um app de chamada de um amigo dele) — as ações da sala
+         (compartilhar/parar, convidar) saem do cabeçalho e ficam sempre
+         visíveis por cima do palco, ScreenViewer ou grid de espera. */}
+      <div className="stage-controls">
+        {capture.status === "active" ? (
+          <Button variant="danger" icon={<IconPlayerStop />} onClick={() => void handleStopSharing()}>parar transmissao</Button>
+        ) : (
+          <Button icon={<IconShare />} disabled={capture.status === "starting"} onClick={() => setPickerOpen(true)}>
+            {capture.status === "starting" ? "iniciando..." : "compartilhar tela"}
+          </Button>
+        )}
+        <Button variant="ghost" onClick={() => void handleCopyInvite()}>copiar convite</Button>
       </div>
       <CaptureSourcePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onStart={(sourceId, quality, audioEnabled, fps) => void handleStartSharing(sourceId, quality, audioEnabled, fps)} />
     </section>

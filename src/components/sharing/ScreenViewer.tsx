@@ -4,6 +4,7 @@ import { Avatar } from "../ui/Avatar";
 import { IconEye, IconMaximize, IconMinimize, IconPlayerStop, IconVolume, IconVolumeOff } from "../ui/Icons";
 import { log } from "../../services/logger";
 import { watchStreamEnded } from "./streamLifecycle";
+import { ConnectionQualityIcon } from "../rtc/ConnectionQualityIcon";
 
 /** Tela cheia de verdade (Fullscreen API do navegador/WebView2), não só CSS
  * ocupando a janela — pedido do usuário: a transmissão precisa ser algo
@@ -182,6 +183,7 @@ export function ScreenViewer({
           {members.map(member => (
             <button key={member.id} title={member.name} className={"viewer-member " + (member.current ? "is-current" : "") + (member.sharing ? " is-live" : "")} onClick={() => onSelect?.(member)}>
               {member.sharing ? <span className="live-dot" /> : null}
+              {member.quality ? <ConnectionQualityIcon quality={member.quality} /> : null}
               <Avatar user={member} size="sm" />
               <span>{member.name}</span>
             </button>
